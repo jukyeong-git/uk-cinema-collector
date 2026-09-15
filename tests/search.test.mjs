@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateSearchForm} from '../src/search.mjs';
+const base='https://whatson.bfi.org.uk/imax/Online/default.asp';
+const fields=['search_criteria','search_from','search_to','venue_filter','city_filter','month_filter','object_type_filter','category_filter'];
+const form=()=>`<form method="post" action="default.asp"><input name="sToken" value="private-session">${fields.map(f=>`<input name="BOset::WScontent::SearchCriteria::${f}" value="">`).join('')}<input name="doWork::WScontent::search" value="1"><input name="BOparam::WScontent::search::article_search_id" value="server-provided-id"><input type="submit"></form>`;
+test('accepts unrestricted live search without exporting session data',()=>assert.equal(validateSearchForm(form(),base),undefined));
+for(const field of fields) test(`rejects a restricted ${field} search`,()=>assert.throws(()=>validateSearchForm(form().replace(`${field}" value=""`,`${field}" value="restricted"`),base),/FILTERED_SEARCH_FORM/));
+test('rejects unexpected populated filters',()=>assert.throws(()=>validateSearchForm(form().replace('</form>','<input name="BOset::WScontent::SearchCriteria::new_filter" value="restricted"></form>'),base),/FILTERED_SEARCH_FORM/));
+test('rejects a search at another cinema path',()=>assert.throws(()=>validateSearchForm(form().replace('action="default.asp"','action="/Online/default.asp"'),base),/UNEXPECTED_PAGE_URL/));
+test('rejects search forms with missing date bounds',()=>assert.throws(()=>validateSearchForm(form().replace('SearchCriteria::search_to','missing'),base),/SEARCH_FORM_CHANGED/));
+test('rejects filtered action URLs',()=>assert.throws(()=>validateSearchForm(form().replace('action="default.asp"','action="default.asp?film=one"'),base),/FILTERED_SEARCH_URL/));

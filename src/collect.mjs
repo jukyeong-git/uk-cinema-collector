@@ -3,9 +3,10 @@ import {launchOptions} from 'camoufox-js';
 import {firefox} from 'playwright-core';
 import {validateCollection} from './collection.mjs';
 import {parsePage,checkedPageUrl} from './parse.mjs';
+import {validateSearchForm,searchInputSelector} from './search.mjs';
 import {CollectionError,requireCondition} from './errors.mjs';
 const config = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
-const target = checkedPageUrl(config.articleUrl).href;
+const target = checkedPageUrl(config.searchUrl).href;
 const started = Date.now();
 let browser;
 let phase = 'prepare';
@@ -18,15 +19,30 @@ try {
   log(phase);
   browser = await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
   const page = await browser.newPage({viewport:{width:1440,height:900}});
-  phase = 'warmup';
-  try { await page.goto('https://whatson.bfi.org.uk/imax/',{waitUntil:'domcontentloaded',timeout:15000}); }
-  catch { log('warmup-incomplete'); }
+  phase = 'search-home';
+  requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
+  const home = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
+  requireCondition(home?.ok() && home.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+  const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
+  await form.waitFor({timeout:30000});
+  validateSearchForm(await form.evaluate(el=>el.outerHTML),page.url());
+  phase = 'search-all';
+  // Submit the live IMAX search form with empty keyword/date/category filters.
+  // Its session token stays inside the browser and is never exported.
+  const [searchResponse] = await Promise.all([
+    page.waitForNavigation({waitUntil:'domcontentloaded',timeout:60000}),
+    form.locator('input[type="submit"]').click(),
+  ]);
+  requireCondition(searchResponse?.ok() && searchResponse.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+  checkedPageUrl(page.url());
   const payload = {schemaVersion:1,source:config.source,collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
-  let next = target;
+  let next = page.url();
   for (let number=1; next && number<=config.maxPages; number++) {
-    phase = 'navigate';
-    const response = await page.goto(next,{waitUntil:'domcontentloaded',timeout:60000});
-    requireCondition(response?.ok() && response.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+    if (number>1) {
+      phase = 'navigate';
+      const response = await page.goto(next,{waitUntil:'domcontentloaded',timeout:60000});
+      requireCondition(response?.ok() && response.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+    }
     phase = 'wait-for-rows';
     await page.locator('div.result-box-item').first().waitFor({timeout:30000});
     phase = 'parse';
@@ -45,9 +61,9 @@ try {
   validateCollection(payload);
   await writeFile('work/payload.json.tmp',JSON.stringify(payload));
   await rename('work/payload.json.tmp','work/payload.json');
-  const summary={collected:payload.performances.length,pages:payload.pages.length,elapsedMs:Date.now()-started};
+  const summary={programmes:new Set(payload.performances.map(row=>row.articleId.toLowerCase())).size,collected:payload.performances.length,pages:payload.pages.length,elapsedMs:Date.now()-started};
   log('collection-complete',summary);
-  if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nSchedule JSON is not retained as an artifact. Cookies and raw HTML are never exported.\n`);
+  if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Scope: all published BFI IMAX schedules (no keyword/date filter)\n- Programmes: ${summary.programmes}\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nSchedule JSON is not retained as an artifact. Cookies and raw HTML are never exported.\n`);
 } catch(error) {
   await rm('work/payload.json',{force:true});
   // Browser/network errors can contain session URLs. Expose only controlled codes.

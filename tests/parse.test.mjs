@@ -5,7 +5,7 @@ const base='https://whatson.bfi.org.uk/imax/Online/default.asp';
 const id='00000000-0000-4000-8000-000000000001';
 const article='00000000-0000-4000-8000-000000000002';
 function page({number=1,total=1,next=null,status='available',date='Friday 18 September 2026 21:00'}={}) {
- return `<title>Buy cinema tickets</title><div class="result-box-item"><div class="item-name"><a href="default.asp?BOparam::WScontent::loadArticle::article_id=${article}&BOparam::WScontent::loadArticle::context_id=${id}&sToken=example">Example Film</a></div><span class="start-date">${date}</span><div class="item-link ${status}">${status==='available'?'<a class="btn-primary">Buy</a>':''}</div></div><li class="av-paging-links active">${number}</li><li class="av-paging-links">${total}</li>${next?`<li id="av-next-link"><a href="${next}">Next</a></li>`:''}`;
+ return `<title>Buy cinema tickets</title><div class="result-box-item"><div class="item-venue">BFI IMAX</div><div class="item-name"><a href="default.asp?BOparam::WScontent::loadArticle::article_id=${article}&BOparam::WScontent::loadArticle::context_id=${id}&sToken=example">Example Film</a></div><span class="start-date">${date}</span><div class="item-link ${status}">${status==='available'?'<a class="btn-primary">Buy</a>':''}</div></div><li class="av-paging-links active">${number}</li><li class="av-paging-links">${total}</li>${next?`<li id="av-next-link"><a href="${next}">Next</a></li>`:''}`;
 }
 test('extracts rows without retaining token-bearing links',()=>{const result=parsePage(page(),base,1);assert.equal(result.rows[0].id,id);assert.equal(result.rows[0].startsAtLocal,'2026-09-18T21:00:00');assert.equal(result.rows[0].status,'available');assert.ok(!JSON.stringify(result).includes('example'));});
 test('keeps winter London time without applying a fixed UTC offset',()=>assert.equal(localTime('Friday 18 December 2026 21:00'),'2026-12-18T21:00:00'));
@@ -17,3 +17,6 @@ test('rejects cross-origin pagination',()=>assert.throws(()=>checkedPageUrl('htt
 test('rejects login/seat selection pagination paths',()=>assert.throws(()=>checkedPageUrl('mapSelect.asp',base)));
 test('preserves sold-out state',()=>assert.equal(parsePage(page({status:'soldout'}),base,1).rows[0].status,'soldout'));
 test('rejects challenge HTML',()=>assert.throws(()=>parsePage('<title>Just a moment...</title>',base,1)));
+
+test('rejects another venue instead of mixing its schedule into IMAX',()=>assert.throws(()=>parsePage(page().replace('BFI IMAX','BFI Southbank'),base,1),/UNEXPECTED_VENUE/));
+test('requires venue evidence on every row',()=>assert.throws(()=>parsePage(page().replace('<div class="item-venue">BFI IMAX</div>',''),base,1),/UNEXPECTED_VENUE/));

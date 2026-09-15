@@ -29,6 +29,7 @@ export function parsePage(html, url, number) {
   requireCondition(!/just a moment|performing security verification/i.test($('title').text()), 'BFI_CHALLENGE');
   const rows = $('div.result-box-item').toArray().map(el => {
     const row = $(el);
+    requireCondition(row.find('.item-venue').text().trim().replace(/\s+/g,' ') === 'BFI IMAX', 'UNEXPECTED_VENUE');
     const name = row.find('div.item-name a').first();
     const href = name.attr('href');
     requireCondition(href, 'MISSING_PERFORMANCE_LINK');
