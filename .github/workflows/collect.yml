@@ -26,10 +26,33 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+          cache: npm
       - run: npm ci
       - run: npm test
-      - run: npx playwright install-deps firefox
-      - run: npx camoufox-js fetch
+      - name: Browser cache key
+        id: browser-key
+        # Refresh upstream browser/GeoIP downloads weekly or when dependencies change.
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore Camoufox runtime
+        id: browser-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/camoufox
+          key: camoufox-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-${{ steps.browser-key.outputs.week }}
+      - name: Download Camoufox runtime on cache miss
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx --no-install camoufox-js fetch
+      - name: Verify browser and install system libraries only if missing
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: node scripts/prepare-browser.mjs
+      - name: Save prepared Camoufox runtime
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          # Executable, addons and GeoIP only. Browser profiles live in temporary directories.
+          path: ~/.cache/camoufox
+          key: ${{ steps.browser-cache.outputs.cache-primary-key }}
       - name: Collect all pages
         run: node src/collect.mjs
       - name: Compare acknowledged collection hash
