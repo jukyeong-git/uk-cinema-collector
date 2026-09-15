@@ -1,0 +1,51 @@
+name: Collect cinema schedules
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cinema-collection
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check receiver configuration
+        env:
+          ROLE: ${{ secrets.AWS_ROLE_ARN }}
+          FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
+          REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          if [ -z "$ROLE" ] || [ -z "$FUNCTION" ] || [ -z "$REGION" ]; then
+            echo "Receiver secrets have not been configured."
+            exit 1
+          fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npx playwright install-deps firefox
+      - run: npx camoufox-js fetch
+      - name: Collect all pages
+        run: node src/collect.mjs
+      - name: Authenticate receiver access
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: cinema-collection
+          mask-aws-account-id: true
+      - name: Deliver collection
+        env:
+          RECEIVER_FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
+        run: python3 src/deliver.py
+      - name: Remove transient data
+        if: always()
+        run: rm -f work/payload.json work/response.json
