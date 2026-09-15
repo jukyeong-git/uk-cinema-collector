@@ -2,11 +2,6 @@ name: Collect cinema schedules
 on:
   workflow_dispatch:
     inputs:
-      save_json:
-        description: Save schedule JSON as a public artifact for 3 days
-        type: boolean
-        required: true
-        default: false
       deliver:
         description: Send the validated collection to the private receiver
         type: boolean
@@ -48,14 +43,6 @@ jobs:
       - run: npx camoufox-js fetch
       - name: Collect all pages
         run: node src/collect.mjs
-      - name: Save schedule JSON
-        if: ${{ inputs.save_json }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: bfi-schedules-${{ github.run_id }}
-          path: work/payload.json
-          if-no-files-found: error
-          retention-days: 3
       - name: Authenticate receiver access
         if: ${{ inputs.deliver }}
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4

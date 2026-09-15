@@ -47,7 +47,7 @@ try {
   await rename('work/payload.json.tmp','work/payload.json');
   const summary={collected:payload.performances.length,pages:payload.pages.length,elapsedMs:Date.now()-started};
   log('collection-complete',summary);
-  if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nOnly validated schedule fields may be retained when JSON export is enabled. Cookies and raw HTML are never exported.\n`);
+  if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nSchedule JSON is not retained as an artifact. Cookies and raw HTML are never exported.\n`);
 } catch(error) {
   await rm('work/payload.json',{force:true});
   // Browser/network errors can contain session URLs. Expose only controlled codes.
