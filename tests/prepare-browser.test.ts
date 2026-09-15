@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ensureBrowser} from '../scripts/prepare-browser.mjs';
+import {ensureBrowser} from '../scripts/prepare-browser.ts';
 test('uses preinstalled runner libraries without installing packages',async()=>{
  let installs=0;await ensureBrowser(async()=>{},()=>installs++,()=>{});assert.equal(installs,0);
 });

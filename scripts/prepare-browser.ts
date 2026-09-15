@@ -3,12 +3,12 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {launchOptions} from 'camoufox-js';
 import {firefox} from 'playwright-core';
 
-export async function ensureBrowser(probe, install, log) {
+export async function ensureBrowser(probe: () => Promise<void>, install: () => unknown, log: (event: string, values?: {systemInstall?: boolean}) => void) {
   try {
     await probe();
     log('browser-ready', {systemInstall:false});
   } catch(error) {
-    const missing = /missing dependencies|error while loading shared libraries|cannot open shared object file/i.test(error.message || '');
+    const missing = /missing dependencies|error while loading shared libraries|cannot open shared object file/i.test(error instanceof Error ? error.message : '');
     if (!missing) throw new Error('BROWSER_PREFLIGHT_FAILED');
     log('browser-system-dependencies-missing');
     await install();
@@ -36,7 +36,7 @@ function install() {
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
   try { await ensureBrowser(probe,install,(event,values={})=>console.log(JSON.stringify({event,...values}))); }
   catch(error) {
-    console.error(JSON.stringify({event:'browser-prepare-failed',code:['BROWSER_PREFLIGHT_FAILED','BROWSER_PREFLIGHT_FAILED_AFTER_INSTALL','SYSTEM_INSTALL_FAILED'].includes(error.message)?error.message:'PREPARE_FAILED'}));
+    console.error(JSON.stringify({event:'browser-prepare-failed',code:['BROWSER_PREFLIGHT_FAILED','BROWSER_PREFLIGHT_FAILED_AFTER_INSTALL','SYSTEM_INSTALL_FAILED'].includes(error instanceof Error ? error.message : '') && error instanceof Error?error.message:'PREPARE_FAILED'}));
     process.exitCode=1;
   }
 }

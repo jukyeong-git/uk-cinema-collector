@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectionHash,planChange,acknowledgedState} from '../src/change.mjs';
-const row=(n,status='available')=>({id:`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`,articleId:'00000000-0000-4000-8000-000000000099',title:'Example',startsAtLocal:'2026-09-18T21:00:00',timeZone:'Europe/London',status});
+import {collectionHash,planChange,acknowledgedState} from '../src/change.ts';
+const row=(n: number,status='available')=>({id:`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`,articleId:'00000000-0000-4000-8000-000000000099',title:'Example',startsAtLocal:'2026-09-18T21:00:00',timeZone:'Europe/London',status});
 const fixture=()=>({schemaVersion:1,source:'bfi-imax',collectedAt:new Date().toISOString(),complete:true,pages:[{number:1,count:2}],expectedPages:1,performances:[row(1),row(2)]});
-const state=p=>({version:1,source:'bfi-imax',hash:collectionHash(p)});
+const state=(p: unknown)=>({version:1,source:'bfi-imax',hash:collectionHash(p)});
 test('first collection requires receiver acknowledgement',()=>assert.equal(planChange(fixture(),null).changed,true));
 test('same data with a different timestamp and row order skips receiver',()=>{const p=fixture(),old=state(p);p.collectedAt=new Date(Date.now()-1000).toISOString();p.performances.reverse();assert.equal(planChange(p,old).changed,false);});
-test('property ordering does not change the hash',()=>{const p=fixture(),old=state(p);p.performances=p.performances.map(r=>Object.fromEntries(Object.entries(r).reverse()));assert.equal(planChange(p,old).changed,false);});
+test('property ordering does not change the hash',()=>{const p=fixture(),old=state(p);p.performances=p.performances.map(r=>Object.fromEntries(Object.entries(r).reverse()) as typeof r);assert.equal(planChange(p,old).changed,false);});
 test('new performance changes hash',()=>{const p=fixture(),old=state(p);p.performances.push(row(3));p.pages[0].count++;assert.equal(planChange(p,old).changed,true);});
 test('sales status change calls receiver',()=>{const p=fixture(),old=state(p);p.performances[0].status='soldout';assert.equal(planChange(p,old).changed,true);});
 test('page layout does not change hash',()=>{const p=fixture(),old=state(p);p.expectedPages=2;p.pages=[{number:1,count:1},{number:2,count:1}];assert.equal(planChange(p,old).changed,false);});

@@ -45,7 +45,7 @@ jobs:
       - name: Verify browser and install system libraries only if missing
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: node scripts/prepare-browser.mjs
+        run: npm run prepare-browser
       - name: Save prepared Camoufox runtime
         if: steps.browser-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -54,12 +54,12 @@ jobs:
           path: ~/.cache/camoufox
           key: ${{ steps.browser-cache.outputs.cache-primary-key }}
       - name: Collect all pages
-        run: node src/collect.mjs
+        run: npm run collect
       - name: Compare acknowledged collection hash
         id: compare
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node src/state.mjs compare
+        run: npm run state -- compare
       - name: Check receiver configuration
         if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
         env:
@@ -83,12 +83,12 @@ jobs:
         if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
         env:
           RECEIVER_FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
-        run: python3 src/deliver.py
+        run: npm run deliver
       - name: Save hash after receiver acknowledgement
         if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node src/state.mjs acknowledge
+        run: npm run state -- acknowledge
       - name: Remove transient data
         if: always()
         run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json

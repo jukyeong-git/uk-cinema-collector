@@ -6,3 +6,4 @@ work/
 *.pem
 *.key
 .DS_Store
+AGENTS.md

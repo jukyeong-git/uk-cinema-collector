@@ -1,9 +1,9 @@
 import {load} from 'cheerio';
-import {checkedPageUrl} from './parse.mjs';
-import {requireCondition as check} from './errors.mjs';
+import {checkedPageUrl} from './parse.ts';
+import {requireCondition as check} from './errors.ts';
 const prefix = 'BOset::WScontent::SearchCriteria::';
 export const searchInputSelector = `input[name="${prefix}search_criteria"]`;
-export function validateSearchForm(html, base) {
+export function validateSearchForm(html: string, base: string) {
   const $ = load(html);
   const form = $('form').filter((_,el)=>$(el).find(searchInputSelector).length>0);
   check(form.length===1 && form.attr('method')?.toLowerCase()==='post', 'SEARCH_FORM_CHANGED');
@@ -19,6 +19,6 @@ export function validateSearchForm(html, base) {
     }
   }
   check(form.find('input[name="doWork::WScontent::search"]').val()==='1', 'SEARCH_FORM_CHANGED');
-  check(form.find('input[name="BOparam::WScontent::search::article_search_id"]').val()?.length>0, 'SEARCH_FORM_CHANGED');
+  check((form.find('input[name="BOparam::WScontent::search::article_search_id"]').val()?.length ?? 0)>0, 'SEARCH_FORM_CHANGED');
   check(form.find('input[type="submit"]').length===1, 'SEARCH_FORM_CHANGED');
 }

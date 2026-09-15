@@ -1,26 +1,29 @@
+import type {Collection} from './types.ts';
+import type {Browser, Response} from 'playwright-core';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
 import {launchOptions} from 'camoufox-js';
 import {firefox} from 'playwright-core';
-import {validateCollection} from './collection.mjs';
-import {parsePage,checkedPageUrl} from './parse.mjs';
-import {validateSearchForm,searchInputSelector} from './search.mjs';
-import {CollectionError,requireCondition} from './errors.mjs';
-import {responseDiagnostic,errorDiagnostic} from './diagnostics.mjs';
-const config = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
+import {validateCollection} from './collection.ts';
+import {parsePage,checkedPageUrl} from './parse.ts';
+import {validateSearchForm,searchInputSelector} from './search.ts';
+import {CollectionError,isRecord,requireCondition} from './errors.ts';
+import {responseDiagnostic,errorDiagnostic} from './diagnostics.ts';
+const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
+requireCondition(isRecord(config) && config.source === 'bfi-imax' && typeof config.searchUrl === 'string' && typeof config.maxPages === 'number' && Number.isInteger(config.maxPages) && config.maxPages >= 1 && config.maxPages <= 100, 'INVALID_CONFIG');
 const target = checkedPageUrl(config.searchUrl).href;
 const started = Date.now();
-let browser;
+let browser: Browser | undefined;
 let phase = 'prepare';
 let phaseStarted=started;
 let currentPage=0;
-let lastResponse;
-const setPhase=(value)=>{
+let lastResponse: ReturnType<typeof responseDiagnostic> | undefined;
+const setPhase=(value: string)=>{
   log('phase-complete',{phase,phaseElapsedMs:Date.now()-phaseStarted});
   phase=value;phaseStarted=Date.now();
   log('phase-start',{phase,page:currentPage});
 };
-const recordResponse=(response)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
-const log = (event, values = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
+const recordResponse=(response: Response | null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
+const log = (event: string, values: Record<string, unknown> = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});
@@ -46,8 +49,8 @@ try {
   recordResponse(searchResponse);
   requireCondition(searchResponse?.ok() && searchResponse.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
   checkedPageUrl(page.url());
-  const payload = {schemaVersion:1,source:config.source,collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
-  let next = page.url();
+  const payload: Collection = {schemaVersion:1,source:config.source,collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
+  let next: string | null = page.url();
   for (let number=1; next && number<=config.maxPages; number++) {
     currentPage=number;
     if (number>1) {

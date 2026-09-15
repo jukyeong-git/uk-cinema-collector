@@ -1,11 +1,11 @@
 import {readFile,writeFile,appendFile} from 'node:fs/promises';
-import {planChange,parseStoredState,acknowledgedState} from './change.mjs';
-import {CollectionError,requireCondition} from './errors.mjs';
+import {planChange,parseStoredState,acknowledgedState} from './change.ts';
+import {CollectionError,isRecord,requireCondition} from './errors.ts';
 
 // Only the acknowledged hash is public. Full schedules are never committed.
 const repo = process.env.GITHUB_REPOSITORY;
 const token = process.env.GH_TOKEN;
-async function request(method,body) {
+async function request(method: 'GET' | 'PUT',body?: Record<string, unknown>): Promise<unknown> {
   requireCondition(/^[\w.-]+\/[\w.-]+$/.test(repo || '') && token, 'MISSING_STATE_ACCESS');
   const url = `https://api.github.com/repos/${repo}/contents/state.json${method === 'GET' ? '?ref=state' : ''}`;
   const response = await fetch(url,{
@@ -19,21 +19,22 @@ async function request(method,body) {
   return response.json();
 }
 try {
-  const payload = JSON.parse(await readFile('work/payload.json','utf8'));
+  const payload: unknown = JSON.parse(await readFile('work/payload.json','utf8'));
   if(process.argv[2] === 'compare') {
     const file = await request('GET');
-    let previous = null;
+    let previous: ReturnType<typeof parseStoredState> | null = null;
     if(file) {
-      requireCondition(file.encoding === 'base64' && typeof file.sha === 'string', 'INVALID_STATE_FILE');
+      requireCondition(isRecord(file) && file.encoding === 'base64' && typeof file.sha === 'string' && typeof file.content === 'string', 'INVALID_STATE_FILE');
       previous = parseStoredState(JSON.parse(Buffer.from(file.content,'base64').toString('utf8')));
     }
-    const pending = {...planChange(payload,previous),sha:file?.sha || null};
+    const pending = {...planChange(payload,previous),sha:isRecord(file) && typeof file.sha === 'string' ? file.sha : null};
     await writeFile('work/pending-state.json',JSON.stringify(pending));
     if(process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT,`changed=${pending.changed}\n`);
     console.log(JSON.stringify({event:'comparison-complete',changed:pending.changed,baselineExists:Boolean(previous)}));
   } else if(process.argv[2] === 'acknowledge') {
-    const pending = JSON.parse(await readFile('work/pending-state.json','utf8'));
-    const response = JSON.parse(await readFile('work/response.json','utf8'));
+    const pending: unknown = JSON.parse(await readFile('work/pending-state.json','utf8'));
+    const response: unknown = JSON.parse(await readFile('work/response.json','utf8'));
+    requireCondition(isRecord(pending) && (pending.sha === null || typeof pending.sha === 'string'), 'INVALID_PENDING_STATE');
     const state = acknowledgedState(payload,pending,response);
     await request('PUT',{
       message:'Update acknowledged collection hash',

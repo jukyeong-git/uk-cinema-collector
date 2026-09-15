@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateSearchForm} from '../src/search.mjs';
+import {validateSearchForm} from '../src/search.ts';
 const base='https://whatson.bfi.org.uk/imax/Online/default.asp';
 const fields=['search_criteria','search_from','search_to','venue_filter','city_filter','month_filter','object_type_filter','category_filter'];
 const form=()=>`<form method="post" action="default.asp"><input name="sToken" value="private-session">${fields.map(f=>`<input name="BOset::WScontent::SearchCriteria::${f}" value="">`).join('')}<input name="doWork::WScontent::search" value="1"><input name="BOparam::WScontent::search::article_search_id" value="server-provided-id"><input type="submit"></form>`;
