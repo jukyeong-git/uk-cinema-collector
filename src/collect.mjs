@@ -5,47 +5,60 @@ import {validateCollection} from './collection.mjs';
 import {parsePage,checkedPageUrl} from './parse.mjs';
 import {validateSearchForm,searchInputSelector} from './search.mjs';
 import {CollectionError,requireCondition} from './errors.mjs';
+import {responseDiagnostic,errorDiagnostic} from './diagnostics.mjs';
 const config = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
 const target = checkedPageUrl(config.searchUrl).href;
 const started = Date.now();
 let browser;
 let phase = 'prepare';
-const log = (event, values = {}) => console.log(JSON.stringify({event,...values}));
+let phaseStarted=started;
+let currentPage=0;
+let lastResponse;
+const setPhase=(value)=>{
+  log('phase-complete',{phase,phaseElapsedMs:Date.now()-phaseStarted});
+  phase=value;phaseStarted=Date.now();
+  log('phase-start',{phase,page:currentPage});
+};
+const recordResponse=(response)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
+const log = (event, values = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});
 try {
-  phase = 'launch';
-  log(phase);
+  setPhase('launch');
   browser = await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
   const page = await browser.newPage({viewport:{width:1440,height:900}});
-  phase = 'search-home';
+  setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
   const home = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
+  recordResponse(home);
   requireCondition(home?.ok() && home.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
   const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
   await form.waitFor({timeout:30000});
   validateSearchForm(await form.evaluate(el=>el.outerHTML),page.url());
-  phase = 'search-all';
+  setPhase('search-all');
   // Submit the live IMAX search form with empty keyword/date/category filters.
   // Its session token stays inside the browser and is never exported.
   const [searchResponse] = await Promise.all([
     page.waitForNavigation({waitUntil:'domcontentloaded',timeout:60000}),
     form.locator('input[type="submit"]').click(),
   ]);
+  recordResponse(searchResponse);
   requireCondition(searchResponse?.ok() && searchResponse.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
   checkedPageUrl(page.url());
   const payload = {schemaVersion:1,source:config.source,collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
   let next = page.url();
   for (let number=1; next && number<=config.maxPages; number++) {
+    currentPage=number;
     if (number>1) {
-      phase = 'navigate';
+      setPhase('navigate');
       const response = await page.goto(next,{waitUntil:'domcontentloaded',timeout:60000});
+      recordResponse(response);
       requireCondition(response?.ok() && response.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
     }
-    phase = 'wait-for-rows';
+    setPhase('wait-for-rows');
     await page.locator('div.result-box-item').first().waitFor({timeout:30000});
-    phase = 'parse';
+    setPhase('parse');
     const result = parsePage(await page.content(), next, number);
     if (number===1) payload.expectedPages=result.totalPages;
     requireCondition(result.totalPages === payload.expectedPages, 'PAGINATION_CHANGED');
@@ -55,7 +68,7 @@ try {
     log('page-collected',{page:number,rows:result.rows.length,hasNext:Boolean(next)});
   }
   requireCondition(!next, 'PAGE_LIMIT_EXCEEDED');
-  phase = 'validate';
+  setPhase('validate');
   payload.complete=true;
   payload.collectedAt=new Date().toISOString();
   validateCollection(payload);
@@ -67,7 +80,7 @@ try {
 } catch(error) {
   await rm('work/payload.json',{force:true});
   // Browser/network errors can contain session URLs. Expose only controlled codes.
-  log('collection-failed',{phase,code:error instanceof CollectionError ? error.code : 'EXECUTION_ERROR',errorType:error.name});
+  log('collection-failed',{phase,code:error instanceof CollectionError ? error.code : 'EXECUTION_ERROR',page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,lastResponse,...errorDiagnostic(error)});
   process.exitCode=1;
 } finally {
   await browser?.close();
