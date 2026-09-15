@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       save_json:
-        description: Save schedule JSON as a public artifact for 7 days
+        description: Save schedule JSON as a public artifact for 3 days
         type: boolean
         required: true
         default: false
@@ -55,7 +55,7 @@ jobs:
           name: bfi-schedules-${{ github.run_id }}
           path: work/payload.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
       - name: Authenticate receiver access
         if: ${{ inputs.deliver }}
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
