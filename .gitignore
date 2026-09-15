@@ -7,3 +7,6 @@ work/
 *.key
 .DS_Store
 AGENTS.md
+.wrangler/
+.dev.vars
+.dev.vars.*
