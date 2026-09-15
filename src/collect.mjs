@@ -1,43 +1,58 @@
-import {writeFile,mkdir} from 'node:fs/promises';
+import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
 import {launchOptions} from 'camoufox-js';
 import {firefox} from 'playwright-core';
 import {validateCollection} from './collection.mjs';
-const target='https://whatson.bfi.org.uk/imax/Online/default.asp?BOparam::WScontent::loadArticle::permalink=resident-evil';
-const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-function localTime(s){const m=s.match(/^\w+\s+(\d{1,2})\s+(\w+)\s+(\d{4})\s+(\d{2}):(\d{2})$/);if(!m||!months.includes(m[2]))throw Error('Unknown BFI date format');return `${m[3]}-${String(months.indexOf(m[2])+1).padStart(2,'0')}-${m[1].padStart(2,'0')}T${m[4]}:${m[5]}:00`;}
+import {parsePage,checkedPageUrl} from './parse.mjs';
+import {CollectionError,requireCondition} from './errors.mjs';
+const config = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
+const target = checkedPageUrl(config.articleUrl).href;
+const started = Date.now();
 let browser;
-try{
- browser=await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
- const page=await browser.newPage({viewport:{width:1440,height:900}});
- await page.goto('https://whatson.bfi.org.uk/imax/',{waitUntil:'domcontentloaded',timeout:60000});
- const payload={schemaVersion:1,source:'bfi-imax',collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
- let next=target;const seen=new Set();
- for(let number=1;next&&number<=100;number++){
-  if(seen.has(next))throw Error('Pagination loop');seen.add(next);
-  const response=await page.goto(next,{waitUntil:'domcontentloaded',timeout:60000});
-  if(!response?.ok()||response.headers()['cf-mitigated']==='challenge')throw Error('BFI navigation blocked');
-  await page.locator('div.result-box-item').first().waitFor({timeout:30000});
-  const result=await page.evaluate(()=>{
-   const getId=(href,suffix)=>{const u=new URL(href,location.href);return [...u.searchParams].find(([k])=>k.endsWith('::'+suffix))?.[1]||'';};
-   const rows=[...document.querySelectorAll('div.result-box-item')].map(row=>{
-    const a=row.querySelector('div.item-name a');const link=row.querySelector('div.item-link');
-    return{id:getId(a?.href||'','context_id'),articleId:getId(a?.href||'','article_id'),title:a?.textContent.trim()||'',date:row.querySelector('span.start-date')?.textContent.trim()||'',status:link?.classList.contains('soldout')?'soldout':link?.querySelector('a.btn-primary')?'available':'unavailable'};
-   });
-   const nums=[...document.querySelectorAll('.av-paging-links')].map(e=>Number(e.textContent.trim())).filter(Number.isFinite);
-   return{rows,totalPages:Math.max(1,...nums),next:document.querySelector('#av-next-link a')?.href||null};
-  });
-  if(number===1)payload.expectedPages=result.totalPages;
-  if(!result.rows.length)throw Error('Empty page');
-  payload.pages.push({number,count:result.rows.length});
-  payload.performances.push(...result.rows.map(({date,...r})=>({...r,startsAtLocal:localTime(date),timeZone:'Europe/London'})));
-  next=result.next;
-  console.log(JSON.stringify({page:number,rows:result.rows.length,hasNext:Boolean(next)}));
- }
- if(next)throw Error('Page limit exceeded');
- payload.complete=true;payload.collectedAt=new Date().toISOString();
- validateCollection(payload);
- await mkdir('work',{recursive:true});
- await writeFile('work/payload.json',JSON.stringify(payload));
- console.log(JSON.stringify({collected:payload.performances.length,pages:payload.pages.length}));
-}catch(error){console.error(JSON.stringify({failed:true,errorType:error.name}));process.exitCode=1;}
-finally{await browser?.close();}
+let phase = 'prepare';
+const log = (event, values = {}) => console.log(JSON.stringify({event,...values}));
+await mkdir('work', {recursive:true});
+await rm('work/payload.json', {force:true});
+await rm('work/payload.json.tmp', {force:true});
+try {
+  phase = 'launch';
+  log(phase);
+  browser = await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
+  const page = await browser.newPage({viewport:{width:1440,height:900}});
+  phase = 'warmup';
+  try { await page.goto('https://whatson.bfi.org.uk/imax/',{waitUntil:'domcontentloaded',timeout:15000}); }
+  catch { log('warmup-incomplete'); }
+  const payload = {schemaVersion:1,source:config.source,collectedAt:'',complete:false,pages:[],expectedPages:0,performances:[]};
+  let next = target;
+  for (let number=1; next && number<=config.maxPages; number++) {
+    phase = 'navigate';
+    const response = await page.goto(next,{waitUntil:'domcontentloaded',timeout:60000});
+    requireCondition(response?.ok() && response.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+    phase = 'wait-for-rows';
+    await page.locator('div.result-box-item').first().waitFor({timeout:30000});
+    phase = 'parse';
+    const result = parsePage(await page.content(), next, number);
+    if (number===1) payload.expectedPages=result.totalPages;
+    requireCondition(result.totalPages === payload.expectedPages, 'PAGINATION_CHANGED');
+    payload.pages.push({number,count:result.rows.length});
+    payload.performances.push(...result.rows);
+    next=result.next;
+    log('page-collected',{page:number,rows:result.rows.length,hasNext:Boolean(next)});
+  }
+  requireCondition(!next, 'PAGE_LIMIT_EXCEEDED');
+  phase = 'validate';
+  payload.complete=true;
+  payload.collectedAt=new Date().toISOString();
+  validateCollection(payload);
+  await writeFile('work/payload.json.tmp',JSON.stringify(payload));
+  await rename('work/payload.json.tmp','work/payload.json');
+  const summary={collected:payload.performances.length,pages:payload.pages.length,elapsedMs:Date.now()-started};
+  log('collection-complete',summary);
+  if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nNo payload, cookies, or raw HTML are published.\n`);
+} catch(error) {
+  await rm('work/payload.json',{force:true});
+  // Browser/network errors can contain session URLs. Expose only controlled codes.
+  log('collection-failed',{phase,code:error instanceof CollectionError ? error.code : 'EXECUTION_ERROR',errorType:error.name});
+  process.exitCode=1;
+} finally {
+  await browser?.close();
+}
