@@ -63,8 +63,14 @@ jobs:
             echo "::notice::Public IP lookup failed; continuing collection."
           fi
       - name: Collect all pages
+        id: collect
+        continue-on-error: true
         run: npm run collect
+      - name: Fail for errors other than HTTP 403
+        if: ${{ steps.collect.outcome == 'failure' && steps.collect.outputs.blocked403 != 'true' }}
+        run: exit 1
       - name: Compare acknowledged collection hash
+        if: ${{ steps.collect.outcome == 'success' }}
         id: compare
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,7 +87,7 @@ jobs:
             exit 1
           fi
       - name: Authenticate receiver access
-        if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
+        if: ${{ (inputs.deliver && steps.compare.outputs.changed == 'true') || steps.collect.outputs.blocked403 == 'true' }}
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -98,6 +104,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: npm run state -- acknowledge
+      - name: Prepare shared hash for Lambda fallback
+        if: ${{ steps.collect.outputs.blocked403 == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DELIVER: ${{ inputs.deliver }}
+        run: npm run state -- fallback-prepare
+      - name: Collect through London Lambda after HTTP 403
+        if: ${{ steps.collect.outputs.blocked403 == 'true' }}
+        env:
+          AWS_MAX_ATTEMPTS: '1'
+        run: npx --no-install tsx scripts/fallback.ts
+      - name: Save fallback hash after receiver acknowledgement
+        if: ${{ steps.collect.outputs.blocked403 == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run state -- fallback-acknowledge
       - name: Remove transient data
         if: always()
-        run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json
+        run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json work/fallback-request.json work/fallback-response.json
