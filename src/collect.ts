@@ -1,5 +1,6 @@
 import type {Collection} from './types.ts';
 import type {Browser, Response} from 'playwright-core';
+import type {Browser as PatchrightBrowser, Response as PatchrightResponse} from 'patchright';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
 import {launchOptions} from 'camoufox-js';
 import {firefox,chromium} from 'playwright-core';
@@ -12,7 +13,7 @@ const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', 
 requireCondition(isRecord(config) && config.source === 'bfi-imax' && typeof config.searchUrl === 'string' && typeof config.maxPages === 'number' && Number.isInteger(config.maxPages) && config.maxPages >= 1 && config.maxPages <= 100, 'INVALID_CONFIG');
 const target = checkedPageUrl(config.searchUrl).href;
 const started = Date.now();
-let browser: Browser | undefined;
+let browser: Browser | PatchrightBrowser | undefined;
 let phase = 'prepare';
 let phaseStarted=started;
 let currentPage=0;
@@ -22,7 +23,7 @@ const setPhase=(value: string)=>{
   phase=value;phaseStarted=Date.now();
   log('phase-start',{phase,page:currentPage});
 };
-const recordResponse=(response: Response | null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
+const recordResponse=(response: Response | PatchrightResponse | null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
 const log = (event: string, values: Record<string, unknown> = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
@@ -30,12 +31,14 @@ await rm('work/payload.json.tmp', {force:true});
 try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
-  requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
-  browser = engine === 'chromium'
+  requireCondition(engine === 'camoufox' || engine === 'chromium' || engine === 'patchright', 'INVALID_COLLECTOR_BROWSER');
+  browser = engine === 'patchright'
+    ? await (await import('patchright')).chromium.launch({headless:true,timeout:60000})
+    : engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
     : await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
-  if (engine === 'chromium') log('browser-started',{engine,version:browser.version()});
-  const page = await browser.newPage({viewport:{width:1440,height:900},...(engine === 'chromium'?{locale:'en-GB'}:{})});
+  if (engine !== 'camoufox') log('browser-started',{engine,version:browser.version()});
+  const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
   const home = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
@@ -43,7 +46,7 @@ try {
   requireCondition(home?.ok() && home.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
   const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
   await form.waitFor({timeout:30000});
-  validateSearchForm(await form.evaluate(el=>el.outerHTML),page.url());
+  validateSearchForm(await page.content(),page.url());
   setPhase('search-all');
   // Submit the live IMAX search form with empty keyword/date/category filters.
   // Its session token stays inside the browser and is never exported.

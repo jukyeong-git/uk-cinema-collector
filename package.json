@@ -6,6 +6,7 @@
   "dependencies": {
     "camoufox-js": "0.12.0",
     "cheerio": "1.1.2",
+    "patchright": "1.60.0",
     "playwright-core": "1.60.0"
   },
   "scripts": {
@@ -19,7 +20,9 @@
     "scheduler:check": "wrangler deploy --config scheduler/wrangler.jsonc --dry-run",
     "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts",
     "scheduler:chromium:deploy": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --keep-vars",
-    "scheduler:chromium:check": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --dry-run"
+    "scheduler:chromium:check": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --dry-run",
+    "scheduler:patchright:deploy": "wrangler deploy --config scheduler/wrangler.patchright.jsonc --keep-vars",
+    "scheduler:patchright:check": "wrangler deploy --config scheduler/wrangler.patchright.jsonc --dry-run"
   },
   "devDependencies": {
     "@types/node": "22.20.2",

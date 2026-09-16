@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
-  "name": "uk-cinema-chromium-scheduler",
-  "main": "src/chromium.ts",
+  "name": "uk-cinema-patchright-scheduler",
+  "main": "src/patchright.ts",
   "compatibility_date": "2026-09-16",
   "compatibility_flags": [
     "nodejs_compat"
@@ -14,10 +14,12 @@
   },
   "vars": {
     "GITHUB_REPOSITORY": "jukyeong-git/uk-cinema-collector",
-    "ENABLED": "false",
+    "ENABLED": "true",
     "DELIVER": "false"
   },
   "triggers": {
-    "crons": []
+    "crons": [
+      "* * * * *"
+    ]
   }
 }
