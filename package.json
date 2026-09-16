@@ -17,9 +17,7 @@
     "state": "tsx src/state.ts",
     "scheduler:deploy": "wrangler deploy --config scheduler/wrangler.jsonc --keep-vars",
     "scheduler:check": "wrangler deploy --config scheduler/wrangler.jsonc --dry-run",
-    "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts",
-    "scheduler:nodriver:deploy": "wrangler deploy --config scheduler/wrangler.nodriver.jsonc --keep-vars",
-    "scheduler:nodriver:check": "wrangler deploy --config scheduler/wrangler.nodriver.jsonc --dry-run"
+    "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.2",
