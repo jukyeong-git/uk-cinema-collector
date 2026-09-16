@@ -17,7 +17,9 @@
     "state": "tsx src/state.ts",
     "scheduler:deploy": "wrangler deploy --config scheduler/wrangler.jsonc --keep-vars",
     "scheduler:check": "wrangler deploy --config scheduler/wrangler.jsonc --dry-run",
-    "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts"
+    "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts",
+    "scheduler:chromium:deploy": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --keep-vars",
+    "scheduler:chromium:check": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --dry-run"
   },
   "devDependencies": {
     "@types/node": "22.20.2",
