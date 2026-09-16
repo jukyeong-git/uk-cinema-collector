@@ -1,6 +1,5 @@
 import type {Collection} from './types.ts';
 import type {Browser, Response} from 'playwright-core';
-import type {Browser as PatchrightBrowser, Response as PatchrightResponse} from 'patchright';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
 import {launchOptions} from 'camoufox-js';
 import {firefox,chromium} from 'playwright-core';
@@ -13,7 +12,7 @@ const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', 
 requireCondition(isRecord(config) && config.source === 'bfi-imax' && typeof config.searchUrl === 'string' && typeof config.maxPages === 'number' && Number.isInteger(config.maxPages) && config.maxPages >= 1 && config.maxPages <= 100, 'INVALID_CONFIG');
 const target = checkedPageUrl(config.searchUrl).href;
 const started = Date.now();
-let browser: Browser | PatchrightBrowser | undefined;
+let browser: Browser | undefined;
 let phase = 'prepare';
 let phaseStarted=started;
 let currentPage=0;
@@ -23,7 +22,7 @@ const setPhase=(value: string)=>{
   phase=value;phaseStarted=Date.now();
   log('phase-start',{phase,page:currentPage});
 };
-const recordResponse=(response: Response | PatchrightResponse | null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
+const recordResponse=(response: Response | null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,...lastResponse});};
 const log = (event: string, values: Record<string, unknown> = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
@@ -31,10 +30,8 @@ await rm('work/payload.json.tmp', {force:true});
 try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
-  requireCondition(engine === 'camoufox' || engine === 'chromium' || engine === 'patchright', 'INVALID_COLLECTOR_BROWSER');
-  browser = engine === 'patchright'
-    ? await (await import('patchright')).chromium.launch({headless:true,timeout:60000})
-    : engine === 'chromium'
+  requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
+  browser = engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
     : await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
   if (engine !== 'camoufox') log('browser-started',{engine,version:browser.version()});
