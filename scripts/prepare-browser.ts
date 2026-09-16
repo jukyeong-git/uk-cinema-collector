@@ -19,7 +19,7 @@ export async function ensureBrowser(probe: () => Promise<void>, install: () => u
 async function probe() {
   let browser;
   try {
-    browser = await firefox.launch({...await launchOptions({headless:true,geoip:false,locale:'en-GB',exclude_addons:['UBO']}),timeout:30000});
+    browser = await firefox.launch({...await launchOptions({headless:true,geoip:false,locale:'en-GB'}),timeout:30000});
     const page = await browser.newPage();
     await page.setContent('<p>Browser ready</p>');
     if (await page.locator('p').textContent() !== 'Browser ready') throw new Error('RENDER_FAILED');

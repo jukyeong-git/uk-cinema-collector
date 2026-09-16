@@ -29,7 +29,7 @@ await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});
 try {
   setPhase('launch');
-  browser = await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB',exclude_addons:['UBO']}),timeout:60000});
+  browser = await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
   const page = await browser.newPage({viewport:{width:1440,height:900}});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
