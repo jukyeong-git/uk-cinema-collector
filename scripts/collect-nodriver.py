@@ -58,7 +58,8 @@ async def collect():
     browser = None
     try:
         PHASE = 'launch'
-        browser = await asyncio.wait_for(uc.start(headless=True, browser_executable_path=os.environ['NODRIVER_BROWSER_PATH']), 60)
+        browser = await asyncio.wait_for(uc.start(headless=True, sandbox=os.environ.get('GITHUB_ACTIONS') != 'true',
+            browser_executable_path=os.environ['NODRIVER_BROWSER_PATH']), 60)
         tab = await browser.get('about:blank')
         version = await tab.send(uc.cdp.browser.get_version())
         log('browser-started', engine='nodriver', version=version[1])
