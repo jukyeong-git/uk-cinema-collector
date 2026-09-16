@@ -30,10 +30,8 @@ await rm('work/payload.json.tmp', {force:true});
 try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
-  requireCondition(engine === 'camoufox' || engine === 'chromium' || engine === 'firefox', 'INVALID_COLLECTOR_BROWSER');
-  browser = engine === 'firefox'
-    ? await firefox.launch({headless:true,timeout:60000})
-    : engine === 'chromium'
+  requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
+  browser = engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
     : await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
   if (engine !== 'camoufox') log('browser-started',{engine,version:browser.version()});
