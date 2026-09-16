@@ -19,8 +19,6 @@
     "scheduler:deploy": "wrangler deploy --config scheduler/wrangler.jsonc --keep-vars",
     "scheduler:check": "wrangler deploy --config scheduler/wrangler.jsonc --dry-run",
     "scheduler:types": "wrangler types --config scheduler/wrangler.jsonc scheduler/worker-configuration.d.ts",
-    "scheduler:chromium:deploy": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --keep-vars",
-    "scheduler:chromium:check": "wrangler deploy --config scheduler/wrangler.chromium.jsonc --dry-run",
     "scheduler:patchright:deploy": "wrangler deploy --config scheduler/wrangler.patchright.jsonc --keep-vars",
     "scheduler:patchright:check": "wrangler deploy --config scheduler/wrangler.patchright.jsonc --dry-run"
   },
