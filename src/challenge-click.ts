@@ -3,7 +3,9 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 // Diagnostic only: interact with a visible checkbox once; never force a click.
 export async function tryChallengeClick(page: Page, log: (event:string, values:Record<string,unknown>)=>void) {
-  const deadline=performance.now()+5000;
+  const started=performance.now();
+  const deadline=started+15000;
+  log('challenge-click-search-start',{phase:'search-home',timeoutMs:15000});
   while (performance.now()<deadline) {
     for (const frame of page.frames()) {
       if (!frame.url().startsWith('https://challenges.cloudflare.com/')) continue;
@@ -20,5 +22,5 @@ export async function tryChallengeClick(page: Page, log: (event:string, values:R
     }
     await delay(100);
   }
-  log('challenge-click-complete',{phase:'search-home',outcome:'checkbox-not-found'});
+  log('challenge-click-complete',{phase:'search-home',outcome:'checkbox-not-found',searchedMs:Math.round(performance.now()-started)});
 }

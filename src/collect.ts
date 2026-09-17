@@ -43,7 +43,7 @@ try {
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
   await openSearchHome(page,target,{recordResponse,log,
-    ...(process.env.CLICK_CHALLENGE === 'true' ? {onChallenge:async()=>{
+    ...(process.env.CLICK_CHALLENGE === 'true' ? {timeoutMs:32000,onChallenge:async()=>{
       try { await page.screenshot({path:'work/challenge-before.png',timeout:2000}); } catch {}
       await tryChallengeClick(page,log);
     }} : {}),
