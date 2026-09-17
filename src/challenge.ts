@@ -4,7 +4,7 @@ import {CollectionError,requireCondition} from './errors.ts';
 import {checkedPageUrl} from './parse.ts';
 import {validateSearchForm} from './search.ts';
 
-export const challengeWaitMs = 15000;
+export const challengeWaitMs = 30000;
 const challenged = (response: Response | null) => response?.headers()['cf-mitigated'] === 'challenge';
 
 // Only the initial GET can wait. Never reload, replay a POST, or replay a challenge submission.
@@ -13,12 +13,14 @@ export async function openSearchHome(page: Page, target: string, options: {
   log: (event: string, values: Record<string,unknown>)=>void;
   timeoutMs?: number;
   onTimeout?: ()=>Promise<void>;
-  onChallenge?: ()=>Promise<void>;
+  onChallenge?: (signal: AbortSignal)=>Promise<void>;
 }) {
   let latest: Response | null = null;
+  const interaction = new AbortController();
   const onResponse = (response: Response) => {
     if (!response.request().isNavigationRequest() || response.frame() !== page.mainFrame()) return;
     latest = response;
+    if (!challenged(response)) interaction.abort();
     options.recordResponse(response);
   };
   page.on('response',onResponse);
@@ -35,7 +37,6 @@ export async function openSearchHome(page: Page, target: string, options: {
     const started = performance.now();
     options.log('challenge-wait-start',{phase:'search-home',timeoutMs});
     const observe = async () => {
-      await options.onChallenge?.();
       while (!controller.signal.aborted) {
         const response = latest;
         if (response && !challenged(response)) {
@@ -56,6 +57,11 @@ export async function openSearchHome(page: Page, target: string, options: {
       }
     };
     try {
+      if (!interaction.signal.aborted) {
+        void options.onChallenge?.(interaction.signal).catch(()=>{
+          if (!interaction.signal.aborted) options.log('challenge-interaction-failed',{phase:'search-home'});
+        });
+      }
       await Promise.race([
         observe(),
         new Promise<never>((_,reject)=>{
@@ -67,6 +73,7 @@ export async function openSearchHome(page: Page, target: string, options: {
       options.log('challenge-wait-complete',{phase:'search-home',
         outcome:error instanceof CollectionError && error.code === 'BFI_CHALLENGE_TIMEOUT' ? 'timeout' : 'failed',
         waitedMs:Math.round(performance.now()-started)});
+      interaction.abort();
       controller.abort();
       if (error instanceof CollectionError && error.code === 'BFI_CHALLENGE_TIMEOUT' && challenged(latest)) {
         try { await options.onTimeout?.(); }
@@ -75,6 +82,7 @@ export async function openSearchHome(page: Page, target: string, options: {
       throw error;
     }
   } finally {
+    interaction.abort();
     controller.abort();
     clearTimeout(timer);
     page.off('response',onResponse);

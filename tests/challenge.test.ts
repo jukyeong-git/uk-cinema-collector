@@ -76,3 +76,59 @@ test('optional timeout diagnostic runs only for a persistent challenge and canno
     assert.equal(captures,challenge?1:0);assert.equal(page.listenerCount('response'),0);
   }
 });
+
+test('normal recovery does not wait for a stalled interaction and cancels it',async()=>{
+  const page=new FakePage();let interactionSignal:AbortSignal|undefined;
+  const events:Record<string,unknown>[]=[];
+  await openSearchHome(page as unknown as Page,target,{
+    timeoutMs:500,recordResponse:()=>{},log:(event,values)=>events.push({event,...values}),
+    onChallenge:async signal=>{
+      interactionSignal=signal;
+      page.html=validForm;page.response(200);
+      await new Promise<void>(()=>{});
+    },
+  });
+  assert.equal(interactionSignal?.aborted,true);
+  assert.equal(events.at(-1)?.outcome,'resolved');
+  assert.equal(page.listenerCount('response'),0);
+});
+
+test('deadline aborts a pending interaction before timeout diagnostics',async()=>{
+  const page=new FakePage();let interactionSignal:AbortSignal|undefined;let aborts=0;
+  await assert.rejects(openSearchHome(page as unknown as Page,target,{
+    timeoutMs:20,recordResponse:()=>{},log:()=>{},
+    onChallenge:signal=>{
+      interactionSignal=signal;
+      return new Promise<void>(resolve=>signal.addEventListener('abort',()=>{aborts++;resolve();},{once:true}));
+    },
+    onTimeout:async()=>{assert.equal(interactionSignal?.aborted,true);},
+  }),/BFI_CHALLENGE_TIMEOUT/);
+  assert.equal(aborts,1);assert.equal(page.listenerCount('response'),0);
+});
+
+test('interaction rejection is sanitized and does not replace recovery or timeout',async()=>{
+  for (const recover of [false,true]) {
+    const page=new FakePage();const events:Record<string,unknown>[]=[];
+    const promise=openSearchHome(page as unknown as Page,target,{
+      timeoutMs:recover?500:20,recordResponse:()=>{},log:(event,values)=>events.push({event,...values}),
+      onChallenge:async()=>{
+        if(recover)setTimeout(()=>{page.html=validForm;page.response(200);},5);
+        throw new Error('private-interaction-details');
+      },
+    });
+    if(recover)await promise;else await assert.rejects(promise,/BFI_CHALLENGE_TIMEOUT/);
+    assert.equal(events.filter(e=>e.event==='challenge-interaction-failed').length,1);
+    assert.equal(events.at(-1)?.outcome,recover?'resolved':'timeout');
+    assert.ok(!JSON.stringify(events).includes('private-interaction-details'));
+    assert.equal(page.listenerCount('response'),0);
+  }
+});
+
+test('recovery before goto completes skips interaction entirely',async()=>{
+  const page=new FakePage();let interactions=0;
+  page.afterGoto=()=>{page.html=validForm;page.response(200);};
+  await openSearchHome(page as unknown as Page,target,{
+    timeoutMs:100,recordResponse:()=>{},log:()=>{},onChallenge:async()=>{interactions++;},
+  });
+  assert.equal(interactions,0);assert.equal(page.listenerCount('response'),0);
+});
