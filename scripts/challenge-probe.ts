@@ -16,11 +16,12 @@ type FrameRecord = ReturnType<typeof classifyFrame> & {
   attached:boolean; checkboxCount:number; namedHumanControlCount:number;
   namedHumanLabelCount:number;
   documentInspection?:string; ownerInspection?:string;
+  ownerLookupInspection?:string; ownerSrcInspection?:string; ownerDisposeInspection?:string;
   visibleEligibleCount:number; scans:number; rejectionReason:string|null;
 };
 const frameIds = new Map<Frame,number>();
 const frames: FrameRecord[] = [];
-const events: ({event:string; frameId:number; elapsedMs:number; documentInspection?:string; ownerInspection?:string} & ReturnType<typeof classifyFrame>)[] = [];
+const events: ({event:string; frameId:number; elapsedMs:number; documentInspection?:string; ownerInspection?:string; ownerLookupInspection?:string; ownerSrcInspection?:string; ownerDisposeInspection?:string} & ReturnType<typeof classifyFrame>)[] = [];
 const responses: (ReturnType<typeof responseDiagnostic> & {elapsedMs:number})[] = [];
 const screenshots: {stage:string; captured:boolean}[] = [];
 let browser: Browser | undefined;
@@ -120,18 +121,38 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
         documentUrl=await bounded(frame.evaluate(()=>location.href),Math.min(400,deadline-Date.now()));
         record.documentInspection=typeof documentUrl==='string' ? 'ok' : 'non-string';
       } catch(error) { record.documentInspection=inspectionFailure(error); }
+      record.ownerLookupInspection='not-attempted';
+      record.ownerSrcInspection='not-attempted';
+      record.ownerDisposeInspection='not-attempted';
+      record.ownerInspection='not-attempted';
       if (Date.now()<deadline) {
+        let element: Awaited<ReturnType<Frame['frameElement']>> | undefined;
         try {
-          const element=await bounded(frame.frameElement(),Math.min(400,deadline-Date.now()));
-          try { frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now())); record.ownerInspection=typeof frameElementSrc==='string' ? 'ok' : 'non-string'; }
-          finally { await bounded(element.dispose(),Math.min(100,deadline-Date.now())); }
-        } catch(error) { record.ownerInspection=inspectionFailure(error); }
+          element=await bounded(frame.frameElement(),Math.min(400,deadline-Date.now()));
+          record.ownerLookupInspection='ok';
+        } catch(error) { record.ownerLookupInspection=inspectionFailure(error); }
+        if (element) {
+          try {
+            if (Date.now()<deadline) {
+              frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now()));
+              record.ownerSrcInspection=typeof frameElementSrc==='string' ? 'ok' : 'non-string';
+            }
+          } catch(error) { record.ownerSrcInspection=inspectionFailure(error); }
+          finally {
+            try {
+              await bounded(element.dispose(),Math.min(100,deadline-Date.now()));
+              record.ownerDisposeInspection='ok';
+            } catch(error) { record.ownerDisposeInspection=inspectionFailure(error); }
+          }
+        }
+        // Preserve the lookup/read result even if handle cleanup fails.
+        record.ownerInspection=record.ownerLookupInspection==='ok' ? record.ownerSrcInspection : record.ownerLookupInspection;
       }
       const evidence=resolveFrameEvidence(primary,targetOrigin,{documentUrl,frameElementSrc});
       const oldRejection=record.rejectionReason;
       Object.assign(record,evidence);
       if (evidence.classification==='blank') record.rejectionReason=oldRejection;
-      if (events.length<500) events.push({event:'frame-url-evidence',frameId:record.id,elapsedMs:elapsed(),documentInspection:record.documentInspection,ownerInspection:record.ownerInspection,...evidence});
+      if (events.length<500) events.push({event:'frame-url-evidence',frameId:record.id,elapsedMs:elapsed(),documentInspection:record.documentInspection,ownerInspection:record.ownerInspection,ownerLookupInspection:record.ownerLookupInspection,ownerSrcInspection:record.ownerSrcInspection,ownerDisposeInspection:record.ownerDisposeInspection,...evidence});
       else truncated=true;
     }
     if (record.rejectionReason) continue;

@@ -70,5 +70,7 @@ export function inspectionFailure(error: unknown): string {
   if (/execution context|cannot find context|context.*destroyed/i.test(message)) return 'execution-context';
   if (/target.*closed|browser.*closed|page.*closed/i.test(message)) return 'closed';
   if (/not supported|not implemented/i.test(message)) return 'unsupported';
+  if (/unable to adopt|different document/i.test(message)) return 'adoption-failed';
+  if (/protocol error/i.test(message)) return 'protocol-error';
   return 'other';
 }

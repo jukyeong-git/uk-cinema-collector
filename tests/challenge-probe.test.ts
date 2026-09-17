@@ -64,6 +64,8 @@ test('inspection failures expose fixed categories only',async()=>{
     ['Frame was detached https://private.example','detached'],
     ['Execution context was destroyed private','execution-context'],
     ['Target closed private','closed'],
+    ['Unable to adopt element handle from a different document private','adoption-failed'],
+    ['Protocol error (Page.adoptNode): private','protocol-error'],
     ['Unexpected private','other'],
   ])assert.equal(inspectionFailure(new Error(message)),category);
 });
