@@ -1,6 +1,0 @@
-{
-  "name": "uk-cinema-collector-lambda-runtime",
-  "private": true,
-  "type": "module",
-  "dependencies": {"aws-lambda-ric": "4.0.2"}
-}

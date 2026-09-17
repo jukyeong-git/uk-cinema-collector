@@ -19,28 +19,7 @@ async function request(method: 'GET' | 'PUT',body?: Record<string, unknown>): Pr
   return response.json();
 }
 try {
-  const operation=process.argv[2];
-  const payload: unknown = operation?.startsWith('fallback-') ? null : JSON.parse(await readFile('work/payload.json','utf8'));
-  if(operation === 'fallback-prepare') {
-    const file=await request('GET');
-    let previous=null;
-    if(file) {
-      requireCondition(isRecord(file) && file.encoding === 'base64' && typeof file.sha === 'string' && typeof file.content === 'string','INVALID_STATE_FILE');
-      previous=parseStoredState(JSON.parse(Buffer.from(file.content,'base64').toString()));
-    }
-    await writeFile('work/fallback-request.json',JSON.stringify({source:'github-403-fallback',previous,deliver:process.env.DELIVER === 'true'}));
-    await writeFile('work/pending-state.json',JSON.stringify({sha:isRecord(file)?file.sha:null}));
-  } else if(operation === 'fallback-acknowledge') {
-    const result=JSON.parse(await readFile('work/fallback-response.json','utf8'));
-    requireCondition(result.ok === true,'FALLBACK_FAILED');
-    if(result.delivered === true) {
-      requireCondition(result.changed === true,'INVALID_FALLBACK_RESPONSE');
-      const state=parseStoredState({version:1,source:'bfi-imax',hash:result.hash});
-      const pending=JSON.parse(await readFile('work/pending-state.json','utf8'));
-      await request('PUT',{message:'Update acknowledged collection hash',branch:'state',content:Buffer.from(JSON.stringify(state)+'\n').toString('base64'),...(pending.sha?{sha:pending.sha}:{})});
-      console.log(JSON.stringify({event:'acknowledged-hash-saved',collector:'lambda'}));
-    }
-  } else
+  const payload: unknown = JSON.parse(await readFile('work/payload.json','utf8'));
   if(process.argv[2] === 'compare') {
     const file = await request('GET');
     let previous: ReturnType<typeof parseStoredState> | null = null;

@@ -31,13 +31,10 @@ try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
   requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
-  const options = engine === 'camoufox'
-    ? await launchOptions({headless:true,geoip:true,locale:'en-GB'}) : {};
-  log('browser-options-ready',{engine});
   browser = engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
-    : await firefox.launch({...options,timeout:60000});
-  log('browser-started',{engine,version:browser.version()});
+    : await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
+  if (engine !== 'camoufox') log('browser-started',{engine,version:browser.version()});
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
@@ -92,7 +89,6 @@ try {
   await rm('work/payload.json',{force:true});
   // Browser/network errors can contain session URLs. Expose only controlled codes.
   log('collection-failed',{phase,code:error instanceof CollectionError ? error.code : 'EXECUTION_ERROR',page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,lastResponse,...errorDiagnostic(error)});
-  if(process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT,`blocked403=${Boolean(lastResponse?.responseReceived && lastResponse.httpStatus === 403)}\n`);
   process.exitCode=1;
 } finally {
   await browser?.close();
