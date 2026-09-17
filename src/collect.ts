@@ -6,6 +6,7 @@ import {firefox,chromium} from 'playwright-core';
 import {validateCollection} from './collection.ts';
 import {parsePage,checkedPageUrl} from './parse.ts';
 import {validateSearchForm,searchInputSelector} from './search.ts';
+import {openSearchHome} from './challenge.ts';
 import {CollectionError,isRecord,requireCondition} from './errors.ts';
 import {responseDiagnostic,errorDiagnostic} from './diagnostics.ts';
 const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
@@ -38,9 +39,7 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
-  const home = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
-  recordResponse(home);
-  requireCondition(home?.ok() && home.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
+  await openSearchHome(page,target,{recordResponse,log});
   const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
   await form.waitFor({timeout:30000});
   validateSearchForm(await page.content(),page.url());
