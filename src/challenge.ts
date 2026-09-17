@@ -7,12 +7,13 @@ import {validateSearchForm} from './search.ts';
 export const challengeWaitMs = 15000;
 const challenged = (response: Response | null) => response?.headers()['cf-mitigated'] === 'challenge';
 
-// Only the initial GET can wait. Never reload, replay a POST, or interact with a challenge.
+// Only the initial GET can wait. Never reload, replay a POST, or replay a challenge submission.
 export async function openSearchHome(page: Page, target: string, options: {
   recordResponse: (response: Response | null)=>void;
   log: (event: string, values: Record<string,unknown>)=>void;
   timeoutMs?: number;
   onTimeout?: ()=>Promise<void>;
+  onChallenge?: ()=>Promise<void>;
 }) {
   let latest: Response | null = null;
   const onResponse = (response: Response) => {
@@ -34,6 +35,7 @@ export async function openSearchHome(page: Page, target: string, options: {
     const started = performance.now();
     options.log('challenge-wait-start',{phase:'search-home',timeoutMs});
     const observe = async () => {
+      await options.onChallenge?.();
       while (!controller.signal.aborted) {
         const response = latest;
         if (response && !challenged(response)) {
