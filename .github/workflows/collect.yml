@@ -1,4 +1,4 @@
-name: Collect cinema schedules
+name: uk-cinema-collector-scheduls
 on:
   workflow_dispatch:
     inputs:
