@@ -62,14 +62,6 @@ jobs:
           # Executable, addons and GeoIP only. Browser profiles live in temporary directories.
           path: ~/.cache/camoufox
           key: ${{ steps.browser-cache.outputs.cache-primary-key }}
-      - name: Show runner public IP
-        run: |
-          echo "Runner public IPv4:"
-          if curl -4 --fail --silent --show-error --connect-timeout 5 --max-time 10 https://api.ipify.org; then
-            echo
-          else
-            echo "::notice::Public IP lookup failed; continuing collection."
-          fi
       - name: Collect all pages
         run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npm run collect
       - name: Compare acknowledged collection hash
