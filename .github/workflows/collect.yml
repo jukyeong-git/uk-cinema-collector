@@ -82,12 +82,10 @@ jobs:
           fi
       - name: Authenticate receiver access
         if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          role-session-name: cinema-collection
-          mask-aws-account-id: true
+        env:
+          RECEIVER_ROLE: ${{ secrets.AWS_ROLE_ARN }}
+          RECEIVER_REGION: ${{ secrets.AWS_REGION }}
+        run: npx --no-install tsx scripts/authenticate-receiver.ts
       - name: Deliver collection
         if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
         env:
