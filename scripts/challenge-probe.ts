@@ -5,7 +5,7 @@ import {checkedPageUrl} from '../src/parse.ts';
 import {searchInputSelector, validateSearchForm} from '../src/search.ts';
 import {errorDiagnostic, responseDiagnostic} from '../src/diagnostics.ts';
 import {isRecord, requireCondition} from '../src/errors.ts';
-import {classifyFrame, resolveFrameEvidence} from './challenge-probe-discovery.ts';
+import {classifyFrame, resolveFrameEvidence, inspectionFailure} from './challenge-probe-discovery.ts';
 
 const directory = 'work/challenge-probe';
 const started = Date.now();
@@ -15,11 +15,12 @@ type FrameRecord = ReturnType<typeof classifyFrame> & {
   id:number; parentId:number|null; firstSeenMs:number; lastSeenMs:number;
   attached:boolean; checkboxCount:number; namedHumanControlCount:number;
   namedHumanLabelCount:number;
+  documentInspection?:string; ownerInspection?:string;
   visibleEligibleCount:number; scans:number; rejectionReason:string|null;
 };
 const frameIds = new Map<Frame,number>();
 const frames: FrameRecord[] = [];
-const events: ({event:string; frameId:number; elapsedMs:number} & ReturnType<typeof classifyFrame>)[] = [];
+const events: ({event:string; frameId:number; elapsedMs:number; documentInspection?:string; ownerInspection?:string} & ReturnType<typeof classifyFrame>)[] = [];
 const responses: (ReturnType<typeof responseDiagnostic> & {elapsedMs:number})[] = [];
 const screenshots: {stage:string; captured:boolean}[] = [];
 let browser: Browser | undefined;
@@ -117,19 +118,20 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
       let frameElementSrc: string | undefined;
       try {
         documentUrl=await bounded(frame.evaluate(()=>location.href),Math.min(400,deadline-Date.now()));
-      } catch { /* Report retains the original URL shape when inspection fails. */ }
+        record.documentInspection=typeof documentUrl==='string' ? 'ok' : 'non-string';
+      } catch(error) { record.documentInspection=inspectionFailure(error); }
       if (Date.now()<deadline) {
         try {
           const element=await bounded(frame.frameElement(),Math.min(400,deadline-Date.now()));
-          try { frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now())); }
+          try { frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now())); record.ownerInspection=typeof frameElementSrc==='string' ? 'ok' : 'non-string'; }
           finally { await bounded(element.dispose(),Math.min(100,deadline-Date.now())); }
-        } catch { /* Detached/closed frames may have no accessible owner. */ }
+        } catch(error) { record.ownerInspection=inspectionFailure(error); }
       }
       const evidence=resolveFrameEvidence(primary,targetOrigin,{documentUrl,frameElementSrc});
       const oldRejection=record.rejectionReason;
       Object.assign(record,evidence);
       if (evidence.classification==='blank') record.rejectionReason=oldRejection;
-      if (events.length<500) events.push({event:'frame-url-evidence',frameId:record.id,elapsedMs:elapsed(),...evidence});
+      if (events.length<500) events.push({event:'frame-url-evidence',frameId:record.id,elapsedMs:elapsed(),documentInspection:record.documentInspection,ownerInspection:record.ownerInspection,...evidence});
       else truncated=true;
     }
     if (record.rejectionReason) continue;

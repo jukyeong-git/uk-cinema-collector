@@ -61,3 +61,14 @@ export function resolveFrameEvidence(primaryUrl: string, targetOrigin: string, f
   }
   return result({...primary,rejectionReason:primary.rejectionReason ?? 'missing-exact-origin-evidence'},'none');
 }
+
+// Export only fixed categories; browser errors may contain URLs or script text.
+export function inspectionFailure(error: unknown): string {
+  const message=error instanceof Error ? error.message : '';
+  if (/INSPECTION_TIMEOUT|timeout|timed out/i.test(message)) return 'timeout';
+  if (/detached|frame was removed|frame has been removed/i.test(message)) return 'detached';
+  if (/execution context|cannot find context|context.*destroyed/i.test(message)) return 'execution-context';
+  if (/target.*closed|browser.*closed|page.*closed/i.test(message)) return 'closed';
+  if (/not supported|not implemented/i.test(message)) return 'unsupported';
+  return 'other';
+}

@@ -55,3 +55,15 @@ test('probe metadata classifies blank frames without leaking opaque contents or 
     assert.ok(!JSON.stringify(classifyFrame(url,target)).includes('private'));
   }
 });
+
+
+test('inspection failures expose fixed categories only',async()=>{
+  const {inspectionFailure}=await import('../scripts/challenge-probe-discovery.ts');
+  for(const [message,category] of [
+    ['INSPECTION_TIMEOUT private','timeout'],
+    ['Frame was detached https://private.example','detached'],
+    ['Execution context was destroyed private','execution-context'],
+    ['Target closed private','closed'],
+    ['Unexpected private','other'],
+  ])assert.equal(inspectionFailure(new Error(message)),category);
+});
