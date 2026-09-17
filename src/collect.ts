@@ -33,8 +33,8 @@ try {
   requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
   browser = engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
-    : await firefox.launch({...await launchOptions({headless:true,geoip:true,locale:'en-GB'}),timeout:60000});
-  if (engine !== 'camoufox') log('browser-started',{engine,version:browser.version()});
+    : await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});
+  log('browser-started',{engine,version:browser.version(),headless:engine !== 'camoufox',displayAvailable:Boolean(process.env.DISPLAY)});
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
