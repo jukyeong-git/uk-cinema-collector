@@ -65,3 +65,14 @@ test('ordinary denial after a challenge fails instead of being treated as cleara
   const page=new FakePage();page.afterGoto=()=>{page.response(403,false);};
   const r=run(page);await assert.rejects(r.promise,/BFI_BLOCKED/);assert.equal(r.events.at(-1)?.outcome,'failed');
 });
+
+test('optional timeout diagnostic runs only for a persistent challenge and cannot replace its error',async()=>{
+  for(const challenge of [false,true]) {
+    const page=new FakePage(403,challenge);let captures=0;
+    await assert.rejects(openSearchHome(page as unknown as Page,target,{
+      timeoutMs:20,recordResponse:()=>{},log:()=>{},
+      onTimeout:async()=>{captures++;throw Error('capture failed');},
+    }),challenge?/BFI_CHALLENGE_TIMEOUT/:/BFI_BLOCKED/);
+    assert.equal(captures,challenge?1:0);assert.equal(page.listenerCount('response'),0);
+  }
+});

@@ -28,6 +28,7 @@ const log = (event: string, values: Record<string, unknown> = {}) => console.log
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});
+await rm('work/challenge.png', {force:true});
 try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
@@ -39,7 +40,12 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
-  await openSearchHome(page,target,{recordResponse,log});
+  await openSearchHome(page,target,{recordResponse,log,
+    ...(process.env.CAPTURE_CHALLENGE_SCREENSHOT === 'true' ? {onTimeout:async()=>{
+      await page.screenshot({path:'work/challenge.png',fullPage:false,timeout:3000});
+      log('challenge-screenshot-saved',{file:'work/challenge.png'});
+    }} : {}),
+  });
   const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
   await form.waitFor({timeout:30000});
   validateSearchForm(await page.content(),page.url());

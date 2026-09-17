@@ -12,6 +12,7 @@ export async function openSearchHome(page: Page, target: string, options: {
   recordResponse: (response: Response | null)=>void;
   log: (event: string, values: Record<string,unknown>)=>void;
   timeoutMs?: number;
+  onTimeout?: ()=>Promise<void>;
 }) {
   let latest: Response | null = null;
   const onResponse = (response: Response) => {
@@ -64,6 +65,11 @@ export async function openSearchHome(page: Page, target: string, options: {
       options.log('challenge-wait-complete',{phase:'search-home',
         outcome:error instanceof CollectionError && error.code === 'BFI_CHALLENGE_TIMEOUT' ? 'timeout' : 'failed',
         waitedMs:Math.round(performance.now()-started)});
+      controller.abort();
+      if (error instanceof CollectionError && error.code === 'BFI_CHALLENGE_TIMEOUT' && challenged(latest)) {
+        try { await options.onTimeout?.(); }
+        catch { options.log('challenge-screenshot-failed',{phase:'search-home'}); }
+      }
       throw error;
     }
   } finally {
