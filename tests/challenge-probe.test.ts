@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyFrame} from '../scripts/challenge-probe-discovery.ts';
+import {classifyFrame, describeFrameUrl, resolveFrameEvidence} from '../scripts/challenge-probe-discovery.ts';
 const target='https://whatson.bfi.org.uk';
 test('probe only accepts exact target and Cloudflare origins',()=>{
   assert.equal(classifyFrame(`${target}/imax/Online/default.asp?token=private`,target).classification,'target-site');
@@ -10,6 +10,43 @@ test('probe only accepts exact target and Cloudflare origins',()=>{
     assert.equal(result.classification,'other');
     assert.equal(result.origin,null);
     assert.ok(result.rejectionReason);
+  }
+});
+test('probe resolves an empty frame URL only with exact trusted fallback evidence',()=>{
+  const missing=resolveFrameEvidence('',target);
+  assert.equal(missing.classification,'invalid');
+  assert.equal(missing.evidenceSource,'none');
+  assert.equal(missing.urlShape.empty,true);
+  assert.ok(missing.rejectionReason);
+  const document=resolveFrameEvidence('',target,{documentUrl:'https://challenges.cloudflare.com/widget?token=private'});
+  assert.equal(document.classification,'cloudflare-challenge');
+  assert.equal(document.evidenceSource,'document-url');
+  const declared=resolveFrameEvidence('',target,{documentUrl:'about:blank',frameElementSrc:'https://challenges.cloudflare.com/widget?token=private'});
+  assert.equal(declared.classification,'cloudflare-challenge');
+  assert.equal(declared.evidenceSource,'frame-element-src');
+  assert.equal(declared.documentUrlShape?.opaque,true);
+  assert.equal(declared.frameElementSrcShape?.protocolCategory,'https');
+});
+test('known foreign or opaque documents cannot be upgraded by a declared trusted src',()=>{
+  const frameElementSrc='https://challenges.cloudflare.com/widget';
+  for (const url of ['https://foreign.invalid/private','data:text/html,private','https://challenges.cloudflare.com.attacker.invalid/']) {
+    const primary=resolveFrameEvidence(url,target,{documentUrl:frameElementSrc,frameElementSrc});
+    assert.notEqual(primary.classification,'cloudflare-challenge');
+    assert.ok(primary.rejectionReason);
+    const document=resolveFrameEvidence('',target,{documentUrl:url,frameElementSrc});
+    assert.notEqual(document.classification,'cloudflare-challenge');
+    assert.ok(document.rejectionReason);
+  }
+});
+test('shape and evidence metadata contain no raw URL contents',()=>{
+  assert.equal(describeFrameUrl('/private?token=private').relative,true);
+  assert.equal(describeFrameUrl('data:text/html,private').opaque,true);
+  assert.equal(describeFrameUrl('https://private.invalid/private').parseable,true);
+  for (const primary of ['', 'about:blank','/private','data:text/html,private','https://private.invalid/private']) {
+    for (const fallback of ['https://challenges.cloudflare.com/widget?token=private#private','https://private.invalid/private','data:text/html,private']) {
+      const result=resolveFrameEvidence(primary,target,{documentUrl:fallback,frameElementSrc:fallback});
+      assert.ok(!JSON.stringify(result).includes('private'));
+    }
   }
 });
 test('probe metadata classifies blank frames without leaking opaque contents or URL tokens',()=>{

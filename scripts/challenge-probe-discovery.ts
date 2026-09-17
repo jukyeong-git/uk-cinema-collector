@@ -1,5 +1,19 @@
 export type FrameClassification = 'target-site' | 'blank' | 'cloudflare-challenge' | 'other' | 'invalid';
 
+export function describeFrameUrl(rawUrl: string) {
+  let parsed: URL | undefined;
+  try { parsed=new URL(rawUrl); } catch { /* Report shape, never the input. */ }
+  const protocol=parsed?.protocol;
+  return {
+    empty:rawUrl.length===0,
+    relative:rawUrl.length>0 && !/^[a-z][a-z\d+.-]*:/i.test(rawUrl),
+    opaque:Boolean(parsed && parsed.origin==='null'),
+    parseable:Boolean(parsed),
+    protocolCategory:protocol==='https:' ? 'https' : protocol==='http:' ? 'http' : protocol==='about:' ? 'about' : protocol==='data:' ? 'data' : protocol==='blob:' ? 'blob' : protocol ? 'other' : 'none',
+    lengthBucket:rawUrl.length===0 ? 'empty' : rawUrl.length<=64 ? '1-64' : rawUrl.length<=256 ? '65-256' : rawUrl.length<=1024 ? '257-1024' : '1025+',
+  };
+}
+
 // Never return a complete URL: frame URLs can carry challenge/session tokens.
 export function classifyFrame(rawUrl: string, targetOrigin: string): {
   classification: FrameClassification; origin: string | null; rejectionReason: string | null;
@@ -20,4 +34,30 @@ export function classifyFrame(rawUrl: string, targetOrigin: string): {
   } catch {
     return {classification:'invalid',origin:null,rejectionReason:'invalid-frame-url'};
   }
+}
+
+// A missing/blank/unresolved browser URL is not origin evidence. Fall back only
+// to an exact trusted origin; a known foreign document must never be upgraded
+// merely because the iframe's declared src still names an earlier trusted URL.
+export function resolveFrameEvidence(primaryUrl: string, targetOrigin: string, fallback: {documentUrl?:string; frameElementSrc?:string} = {}) {
+  const primary=classifyFrame(primaryUrl,targetOrigin);
+  const result=(classification:ReturnType<typeof classifyFrame>,evidenceSource:'frame-url'|'document-url'|'frame-element-src'|'none')=>({
+    ...classification,evidenceSource,urlShape:describeFrameUrl(primaryUrl),
+    ...(fallback.documentUrl===undefined ? {} : {documentUrlShape:describeFrameUrl(fallback.documentUrl)}),
+    ...(fallback.frameElementSrc===undefined ? {} : {frameElementSrcShape:describeFrameUrl(fallback.frameElementSrc)}),
+  });
+  const trusted=(value:ReturnType<typeof classifyFrame>)=>value.classification==='target-site' || value.classification==='cloudflare-challenge';
+  const unresolved=(raw:string)=>raw==='' || raw==='about:blank' || raw==='about:srcdoc' || describeFrameUrl(raw).relative;
+  if (trusted(primary)) return result(primary,'frame-url');
+  if (!unresolved(primaryUrl)) return result(primary,'frame-url');
+  if (fallback.documentUrl!==undefined) {
+    const document=classifyFrame(fallback.documentUrl,targetOrigin);
+    if (trusted(document)) return result(document,'document-url');
+    if (!unresolved(fallback.documentUrl)) return result(document,'document-url');
+  }
+  if (fallback.frameElementSrc!==undefined) {
+    const declared=classifyFrame(fallback.frameElementSrc,targetOrigin);
+    if (trusted(declared)) return result(declared,'frame-element-src');
+  }
+  return result({...primary,rejectionReason:primary.rejectionReason ?? 'missing-exact-origin-evidence'},'none');
 }

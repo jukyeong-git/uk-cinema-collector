@@ -5,7 +5,7 @@ import {checkedPageUrl} from '../src/parse.ts';
 import {searchInputSelector, validateSearchForm} from '../src/search.ts';
 import {errorDiagnostic, responseDiagnostic} from '../src/diagnostics.ts';
 import {isRecord, requireCondition} from '../src/errors.ts';
-import {classifyFrame} from './challenge-probe-discovery.ts';
+import {classifyFrame, resolveFrameEvidence} from './challenge-probe-discovery.ts';
 
 const directory = 'work/challenge-probe';
 const started = Date.now();
@@ -56,11 +56,11 @@ function observe(frame: Frame, event: string): FrameRecord | undefined {
     const parentId = parent ? observe(parent,'parent-observed')?.id ?? null : null;
     id=frames.length+1;
     frameIds.set(frame,id);
-    frames.push({...classifyFrame(frame.url(),targetOrigin),id,parentId,firstSeenMs:elapsed(),lastSeenMs:elapsed(),attached:true,
+    frames.push({...resolveFrameEvidence(frame.url(),targetOrigin),id,parentId,firstSeenMs:elapsed(),lastSeenMs:elapsed(),attached:true,
       checkboxCount:0,namedHumanControlCount:0,namedHumanLabelCount:0,visibleEligibleCount:0,scans:0});
   }
   const record=frames[id-1];
-  const classification=classifyFrame(frame.url(),targetOrigin);
+  const classification=resolveFrameEvidence(frame.url(),targetOrigin);
   if (classification.classification==='blank') {
     let ancestor=frame.parentFrame();
     while (ancestor && classifyFrame(ancestor.url(),targetOrigin).classification==='blank') ancestor=ancestor.parentFrame();
@@ -108,7 +108,31 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
   for (const frame of page.frames()) {
     if (Date.now()>=deadline) return selected;
     const record=observe(frame,'scan');
-    if (!record || record.rejectionReason) continue;
+    if (!record) continue;
+    const primary=frame.url();
+    if (record.classification==='invalid' || record.classification==='blank') {
+      // The protocol may attach a frame before supplying its document URL.
+      // Read corroborating URLs only in memory; serialize classifications only.
+      let documentUrl: string | undefined;
+      let frameElementSrc: string | undefined;
+      try {
+        documentUrl=await bounded(frame.evaluate(()=>location.href),Math.min(400,deadline-Date.now()));
+      } catch { /* Report retains the original URL shape when inspection fails. */ }
+      if (Date.now()<deadline) {
+        try {
+          const element=await bounded(frame.frameElement(),Math.min(400,deadline-Date.now()));
+          try { frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now())); }
+          finally { await bounded(element.dispose(),Math.min(100,deadline-Date.now())); }
+        } catch { /* Detached/closed frames may have no accessible owner. */ }
+      }
+      const evidence=resolveFrameEvidence(primary,targetOrigin,{documentUrl,frameElementSrc});
+      const oldRejection=record.rejectionReason;
+      Object.assign(record,evidence);
+      if (evidence.classification==='blank') record.rejectionReason=oldRejection;
+      if (events.length<500) events.push({event:'frame-url-evidence',frameId:record.id,elapsedMs:elapsed(),...evidence});
+      else truncated=true;
+    }
+    if (record.rejectionReason) continue;
     try {
       const checkboxes=frame.getByRole('checkbox');
       const named=frame.getByRole('checkbox',{name:humanName}).or(frame.getByRole('button',{name:humanName}));
