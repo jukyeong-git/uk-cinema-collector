@@ -74,3 +74,15 @@ export function inspectionFailure(error: unknown): string {
   if (/protocol error/i.test(message)) return 'protocol-error';
   return 'other';
 }
+
+// Keep a bounded first line only; never publish URLs, quoted values, tokens or stacks.
+export function inspectionErrorDetail(error: unknown) {
+  const message=error instanceof Error ? error.message : '';
+  const detail=message.split('\n',1)[0]
+    .replace(/(?:https?|file|data|blob):[^\s]+/gi,'[REDACTED_URL]')
+    .replace(/(["'`])[^"'`]*\1/g,'[REDACTED_VALUE]')
+    .replace(/(?:token|cookie|authorization|password|secret)\s*[:=]\s*\S+/gi,'[REDACTED_SECRET]')
+    .replace(/[a-z\d_+\/=.-]{24,}/gi,'[REDACTED_ID]')
+    .slice(0,400);
+  return {category:inspectionFailure(error),detail};
+}

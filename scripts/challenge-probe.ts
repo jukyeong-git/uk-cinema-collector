@@ -5,8 +5,12 @@ import {checkedPageUrl} from '../src/parse.ts';
 import {searchInputSelector, validateSearchForm} from '../src/search.ts';
 import {errorDiagnostic, responseDiagnostic} from '../src/diagnostics.ts';
 import {isRecord, requireCondition} from '../src/errors.ts';
-import {classifyFrame, resolveFrameEvidence, inspectionFailure} from './challenge-probe-discovery.ts';
+import {classifyFrame, resolveFrameEvidence, inspectionFailure, inspectionErrorDetail} from './challenge-probe-discovery.ts';
 
+import {inspectControlFrames} from './probe-frame-control.ts';
+
+const inspectionErrors: object[]=[];
+let controlFrames: object[]=[];
 const directory = 'work/challenge-probe';
 const started = Date.now();
 const elapsed = () => Date.now()-started;
@@ -112,6 +116,12 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
     const record=observe(frame,'scan');
     if (!record) continue;
     const primary=frame.url();
+    const failed=(stage:string,error:unknown)=>{
+      const detail=inspectionErrorDetail(error);
+      if(inspectionErrors.length<300) inspectionErrors.push({frameId:record.id,stage,elapsedMs:elapsed(),detached:frame.isDetached(),...detail});
+      else truncated=true;
+      return detail.category;
+    };
     if (record.classification==='invalid' || record.classification==='blank') {
       // The protocol may attach a frame before supplying its document URL.
       // Read corroborating URLs only in memory; serialize classifications only.
@@ -120,7 +130,7 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
       try {
         documentUrl=await bounded(frame.evaluate(()=>location.href),Math.min(400,deadline-Date.now()));
         record.documentInspection=typeof documentUrl==='string' ? 'ok' : 'non-string';
-      } catch(error) { record.documentInspection=inspectionFailure(error); }
+      } catch(error) { record.documentInspection=failed('document',error); }
       record.ownerLookupInspection='not-attempted';
       record.ownerSrcInspection='not-attempted';
       record.ownerDisposeInspection='not-attempted';
@@ -130,24 +140,26 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
         try {
           element=await bounded(frame.frameElement(),Math.min(400,deadline-Date.now()));
           record.ownerLookupInspection='ok';
-        } catch(error) { record.ownerLookupInspection=inspectionFailure(error); }
+        } catch(error) { record.ownerLookupInspection=failed('owner-lookup',error); }
         if (element) {
           try {
             if (Date.now()<deadline) {
               frameElementSrc=await bounded(element.evaluate(el=>(el as HTMLIFrameElement).src),Math.min(400,deadline-Date.now()));
               record.ownerSrcInspection=typeof frameElementSrc==='string' ? 'ok' : 'non-string';
             }
-          } catch(error) { record.ownerSrcInspection=inspectionFailure(error); }
+          } catch(error) { record.ownerSrcInspection=failed('owner-src',error); }
           finally {
             try {
               await bounded(element.dispose(),Math.min(100,deadline-Date.now()));
               record.ownerDisposeInspection='ok';
-            } catch(error) { record.ownerDisposeInspection=inspectionFailure(error); }
+            } catch(error) { record.ownerDisposeInspection=failed('owner-dispose',error); }
           }
         }
         // Preserve the lookup/read result even if handle cleanup fails.
         record.ownerInspection=record.ownerLookupInspection==='ok' ? record.ownerSrcInspection : record.ownerLookupInspection;
       }
+      delete (record as FrameRecord & {documentUrlShape?:unknown}).documentUrlShape;
+      delete (record as FrameRecord & {frameElementSrcShape?:unknown}).frameElementSrcShape;
       const evidence=resolveFrameEvidence(primary,targetOrigin,{documentUrl,frameElementSrc});
       const oldRejection=record.rejectionReason;
       Object.assign(record,evidence);
@@ -177,7 +189,7 @@ async function candidate(deadline: number): Promise<{locator:Locator; id:number}
       }
       record.rejectionReason=first ? null : count ? 'no-visible-enabled-human-control' : 'no-human-control';
       if (first) selected ??= {locator:first,id:record.id};
-    } catch { record.rejectionReason='frame-detached-or-inaccessible'; }
+    } catch(error) { failed('controls',error); record.rejectionReason='frame-detached-or-inaccessible'; }
   }
   return selected;
 }
@@ -192,6 +204,7 @@ try {
   targetOrigin=target.origin;
   browser=await Camoufox<undefined,Browser>({headless:'virtual',geoip:true,locale:'en-GB',timeout:30000});
   browserVersion=browser.version();
+  controlFrames=await inspectControlFrames(browser);
   page=await browser.newPage({viewport:{width:1440,height:900}});
   page.on('frameattached',attached);
   page.on('framenavigated',navigated);
@@ -234,7 +247,7 @@ finally {
     page.off('frameattached',attached);page.off('framenavigated',navigated);page.off('framedetached',detached);page.off('response',responseReceived);
   }
   try { await browser?.close(); } catch (error) { failure ??= errorDiagnostic(error); }
-  const report={schemaVersion:1,startedAt:new Date(started).toISOString(),elapsedMs:elapsed(),outcome,
+  const report={schemaVersion:2,controlFrames,inspectionErrors,startedAt:new Date(started).toISOString(),elapsedMs:elapsed(),outcome,
     runtime:{engine:'camoufox',browserVersion,headless:'virtual',geoip:true,locale:'en-GB',viewport:{width:1440,height:900}},
     challengeObserved,initialChallengeMs,searchEndedMs,clickAttempted,clicked,clickedFrameId,
     limits:{challengeWaitMs:30000,discoveryMs:15000,maximumClicks:1},frames,events,responses,screenshots,truncated,...(failure?{failure}:{})};

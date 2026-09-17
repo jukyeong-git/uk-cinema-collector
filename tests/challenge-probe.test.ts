@@ -69,3 +69,12 @@ test('inspection failures expose fixed categories only',async()=>{
     ['Unexpected private','other'],
   ])assert.equal(inspectionFailure(new Error(message)),category);
 });
+
+test('error detail removes URLs, quoted values and credentials',async()=>{
+ const {inspectionErrorDetail}=await import('../scripts/challenge-probe-discovery.ts');
+ const result=inspectionErrorDetail(new Error('Protocol error (Page.adoptNode): missing frame "private" https://secret.invalid/?token=private token=private\nsecret stack'));
+ assert.equal(result.category,'protocol-error');
+ assert.match(result.detail,/Page.adoptNode/);
+ assert.ok(!result.detail.includes('private'));
+ assert.ok(!result.detail.includes('secret'));
+});
