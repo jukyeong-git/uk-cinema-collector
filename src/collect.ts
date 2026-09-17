@@ -6,8 +6,6 @@ import {firefox,chromium} from 'playwright-core';
 import {validateCollection} from './collection.ts';
 import {parsePage,checkedPageUrl} from './parse.ts';
 import {validateSearchForm,searchInputSelector} from './search.ts';
-import {tryChallengeClick} from './challenge-click.ts';
-import {openSearchHome} from './challenge.ts';
 import {CollectionError,isRecord,requireCondition} from './errors.ts';
 import {responseDiagnostic,errorDiagnostic} from './diagnostics.ts';
 const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
@@ -29,8 +27,6 @@ const log = (event: string, values: Record<string, unknown> = {}) => console.log
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});
-await rm('work/challenge.png', {force:true});
-await rm('work/challenge-before.png', {force:true});
 try {
   setPhase('launch');
   const engine = process.env.COLLECTOR_BROWSER ?? 'camoufox';
@@ -42,16 +38,9 @@ try {
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');
-  await openSearchHome(page,target,{recordResponse,log,
-    ...(process.env.CLICK_CHALLENGE === 'true' ? {onChallenge:async(signal:AbortSignal)=>{
-      try { await page.screenshot({path:'work/challenge-before.png',timeout:2000}); } catch {}
-      await tryChallengeClick(page,log,{signal});
-    }} : {}),
-    ...(process.env.CAPTURE_CHALLENGE_SCREENSHOT === 'true' ? {onTimeout:async()=>{
-      await page.screenshot({path:'work/challenge.png',fullPage:false,timeout:3000});
-      log('challenge-screenshot-saved',{file:'work/challenge.png'});
-    }} : {}),
-  });
+  const home = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
+  recordResponse(home);
+  requireCondition(home?.ok() && home.headers()['cf-mitigated'] !== 'challenge', 'BFI_BLOCKED');
   const form = page.locator('form').filter({has:page.locator(searchInputSelector)});
   await form.waitFor({timeout:30000});
   validateSearchForm(await page.content(),page.url());

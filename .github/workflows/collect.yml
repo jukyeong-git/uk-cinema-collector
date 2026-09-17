@@ -7,16 +7,6 @@ on:
         type: boolean
         required: true
         default: false
-      capture_challenge:
-        description: Capture Challenge screen on timeout (retained for 1 day)
-        type: boolean
-        required: false
-        default: false
-      click_challenge:
-        description: Try one Challenge checkbox click (diagnostic only)
-        type: boolean
-        required: false
-        default: false
 permissions:
   contents: read
 concurrency:
@@ -73,18 +63,7 @@ jobs:
             echo "::notice::Public IP lookup failed; continuing collection."
           fi
       - name: Collect all pages
-        env:
-          CAPTURE_CHALLENGE_SCREENSHOT: ${{ inputs.capture_challenge || inputs.click_challenge }}
-          CLICK_CHALLENGE: ${{ inputs.click_challenge }}
         run: npm run collect
-      - name: Upload Challenge screenshot
-        if: ${{ always() && (inputs.capture_challenge || inputs.click_challenge) }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: challenge-screen-${{ github.run_id }}
-          path: work/challenge*.png
-          if-no-files-found: ignore
-          retention-days: 1
       - name: Compare acknowledged collection hash
         id: compare
         env:
@@ -121,4 +100,4 @@ jobs:
         run: npm run state -- acknowledge
       - name: Remove transient data
         if: always()
-        run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json work/challenge*.png
+        run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json
