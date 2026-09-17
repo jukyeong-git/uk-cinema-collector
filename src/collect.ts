@@ -1,8 +1,8 @@
 import type {Collection} from './types.ts';
 import type {Browser, Response} from 'playwright-core';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
-import {Camoufox} from 'camoufox-js';
-import {chromium} from 'playwright-core';
+import {launchOptions} from 'camoufox-js';
+import {firefox,chromium} from 'playwright-core';
 import {validateCollection} from './collection.ts';
 import {parsePage,checkedPageUrl} from './parse.ts';
 import {validateSearchForm,searchInputSelector} from './search.ts';
@@ -33,8 +33,8 @@ try {
   requireCondition(engine === 'camoufox' || engine === 'chromium', 'INVALID_COLLECTOR_BROWSER');
   browser = engine === 'chromium'
     ? await chromium.launch({headless:true,timeout:60000})
-    : await Camoufox<undefined, Browser>({headless:'virtual',geoip:true,locale:'en-GB',timeout:60000});
-  log('browser-started',{engine,version:browser.version(),headless:engine === 'camoufox' ? 'virtual' : true});
+    : await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});
+  log('browser-started',{engine,version:browser.version(),headless:engine !== 'camoufox',displayAvailable:Boolean(process.env.DISPLAY)});
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   setPhase('search-home');
   requireCondition(!new URL(target).search, 'FILTERED_SEARCH_URL');

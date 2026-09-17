@@ -45,16 +45,16 @@ jobs:
         run: npx --no-install camoufox-js fetch
       - name: Ensure virtual display tools
         run: |
-          if command -v Xvfb >/dev/null; then
-            echo "Using preinstalled Xvfb"
+          if command -v Xvfb >/dev/null && command -v xvfb-run >/dev/null && command -v xauth >/dev/null; then
+            echo "Using preinstalled Xvfb and xauth"
           else
             sudo apt-get update
-            sudo apt-get install -y --no-install-recommends xvfb
+            sudo apt-get install -y --no-install-recommends xvfb xauth
           fi
       - name: Verify browser and install system libraries only if missing
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: npm run prepare-browser
+        run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npm run prepare-browser
       - name: Save prepared Camoufox runtime
         if: steps.browser-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -63,7 +63,7 @@ jobs:
           path: ~/.cache/camoufox
           key: ${{ steps.browser-cache.outputs.cache-primary-key }}
       - name: Collect all pages
-        run: npm run collect
+        run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npm run collect
       - name: Compare acknowledged collection hash
         id: compare
         env:
