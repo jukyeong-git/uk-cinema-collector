@@ -27,6 +27,7 @@ def checked_url(url):
 def fetch(session, attempt, phase, url, data=None):
     checked_url(url)
     started = time.monotonic()
+    cookies_before = len(session.cookies)
     response = session.request('POST' if data is not None else 'GET', url, data=data,
                                timeout=30, allow_redirects=False)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -38,7 +39,8 @@ def fetch(session, attempt, phase, url, data=None):
         cfMitigated=response.headers.get('cf-mitigated', '')[:40],
         cfRay=response.headers.get('cf-ray', '')[:80],
         contentType=response.headers.get('content-type', '')[:80], bytes=len(response.content),
-        cookieCount=len(session.cookies), performanceRows=len(soup.select('div.result-box-item')))
+        cookiesBefore=cookies_before, cookieCount=len(session.cookies),
+        hasClearance=any(c.name == 'cf_clearance' for c in session.cookies.jar), performanceRows=len(soup.select('div.result-box-item')))
     if response.status_code != 200 or challenge:
         raise ValueError('HTTP_OR_CHALLENGE_FAILURE')
     return soup
@@ -84,7 +86,10 @@ def main():
         return 0
     except Exception as error:
         # Never print exception messages: they may contain URLs, tokens or cookies.
-        log('probe-stopped', attempt=attempt, phase=phase, errorType=type(error).__name__,
+        allowed = {'UNEXPECTED_TARGET', 'HTTP_OR_CHALLENGE_FAILURE', 'SEARCH_FORM_MISSING',
+                   'FILTERED_SEARCH_FORM', 'NO_PERFORMANCE_ROWS'}
+        code = str(error) if isinstance(error, ValueError) and str(error) in allowed else 'REQUEST_OR_PROBE_ERROR'
+        log('probe-stopped', attempt=attempt, phase=phase, errorType=type(error).__name__, errorCode=code,
             passed=max(0, attempt-1), remainingAttemptsCancelled=10-attempt)
         return 1
 
