@@ -1,0 +1,23 @@
+name: BFI curl_cffi cookie-session probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bfi-curl-session-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install isolated probe dependencies
+        run: |
+          python3 -m venv /tmp/bfi-curl-probe
+          /tmp/bfi-curl-probe/bin/pip install curl_cffi==0.16.3 beautifulsoup4==4.13.4
+      - name: Up to ten checks using one cookie session; stop on first error
+        run: /tmp/bfi-curl-probe/bin/python probes/curl-session.py
