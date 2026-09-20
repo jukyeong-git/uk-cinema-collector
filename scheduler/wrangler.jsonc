@@ -14,12 +14,10 @@
   },
   "vars": {
     "GITHUB_REPOSITORY": "jukyeong-git/uk-cinema-collector",
-    "ENABLED": "true",
+    "ENABLED": "false",
     "DELIVER": "true"
   },
   "triggers": {
-    "crons": [
-      "*/5 * * * *"
-    ]
+    "crons": []
   }
 }
