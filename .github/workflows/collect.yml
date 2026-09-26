@@ -8,10 +8,10 @@ on:
         required: true
         default: false
       duration_minutes:
-        description: Session budget including setup (1-58 minutes; default 58)
+        description: Session budget including setup (1-59 minutes; default 59)
         type: number
         required: false
-        default: 58
+        default: 59
 permissions:
   contents: read
 concurrency:
@@ -28,9 +28,9 @@ jobs:
     steps:
       - name: Set session deadline
         env:
-          DURATION_MINUTES: ${{ inputs.duration_minutes || 58 }}
+          DURATION_MINUTES: ${{ inputs.duration_minutes || 59 }}
         run: |
-          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>58)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
+          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>59)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false

@@ -11,7 +11,7 @@ import {collectionHash} from './change.ts';
 import {monitorLoop,processChange} from './monitor-loop.ts';
 const started=Date.now();
 const deadline=Number(process.env.COLLECTOR_END_AT);
-requireCondition(Number.isFinite(deadline) && deadline>started && deadline-started<=58*60000,'INVALID_MONITOR_DEADLINE');
+requireCondition(Number.isFinite(deadline) && deadline>started && deadline-started<=59*60000,'INVALID_MONITOR_DEADLINE');
 const controller=new AbortController();
 let browser:Browser|undefined;
 let attempts=0,collections=0;
