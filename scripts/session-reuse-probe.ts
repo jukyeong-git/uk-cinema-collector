@@ -1,3 +1,4 @@
+import {acquireSession,retryDelay} from './initial-retry.ts';
 import {httpHandoff} from './http-handoff.ts';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {setTimeout as sleep} from 'node:timers/promises';
@@ -18,7 +19,10 @@ const source='bfi-imax' as const;
 const maxPages=config.maxPages;
 const target=checkedPageUrl(config.searchUrl).href;
 const handoff=process.env.HTTP_HANDOFF==='true';
-const maximumAttempts=handoff?1:10;
+const initialRetry=!handoff && process.env.INITIAL_RETRY==='true';
+const maximumAttempts=handoff?1:initialRetry?20:10;
+let stage=initialRetry?'initial':'repeat';
+let retryAfter:string|undefined;
 const directory=handoff?'work/http-handoff-probe':'work/session-reuse-probe';
 const started=Date.now();
 let browser:Browser|undefined;
@@ -30,12 +34,12 @@ let previousHash:string|undefined;
 let lastResponse:ReturnType<typeof responseDiagnostic>|undefined;
 const events:Record<string,unknown>[]=[];
 const log=(event:string,values:Record<string,unknown>={})=>{
-  const entry={event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,attempt,...values};
+  const entry={event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,attempt,stage,...values};
   events.push(entry);console.log(JSON.stringify(entry));
 };
 const setPhase=(value:string)=>{phase=value;log('phase-start',{phase,page:currentPage});};
-const recordResponse=(response:Response|null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,...lastResponse});};
-const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts,intervalSeconds:60,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
+const recordResponse=(response:Response|null)=>{lastResponse=responseDiagnostic(response);retryAfter=response?.headers()['retry-after'];log('http-response',{phase,page:currentPage,...lastResponse});};
+const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts,initialRetry,stage,intervalSeconds:60,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
 await mkdir(directory,{recursive:true});
 try {
   browser=await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});
@@ -43,8 +47,8 @@ try {
   const page=await context.newPage();
   page.setDefaultTimeout(30000);
   log('browser-started',{version:browser.version(),headless:false,displayAvailable:Boolean(process.env.DISPLAY),sessionReuse:true});
-  await repeatSession(page,async (page:Page,number:number)=>{
-    attempt=number;currentPage=0;lastResponse=undefined;
+  const collect=async (page:Page)=>{
+    attempt++;currentPage=0;lastResponse=undefined;retryAfter=undefined;
     const cookies=await context.cookies(target);
     log('attempt-start',{cookiesBefore:cookies.length,hasClearance:cookies.some(c=>c.name==='cf_clearance'),baselineEstablished:passed>0});
     setPhase('search-home');
@@ -97,7 +101,18 @@ try {
     log('attempt-passed',{pages:payload.pages.length,performances:payload.performances.length,hash,changedFromPrevious:previousHash===undefined?null:previousHash!==hash,cookiesAfter:cookiesAfter.length,hasClearance:cookiesAfter.some(c=>c.name==='cf_clearance')});
     previousHash=hash;
     await save();
-  },async ms=>{log('waiting',{seconds:ms/1000});await sleep(ms);},maximumAttempts);
+  };
+  const wait=async(ms:number)=>{log('waiting',{seconds:ms/1000});await sleep(ms);};
+  if(initialRetry) {
+    await acquireSession(()=>collect(page),()=>lastResponse?.responseReceived===true && lastResponse.httpStatus===403,
+      ()=>retryDelay(retryAfter),wait,async(initialAttempt,error)=>{
+        log('initial-attempt-failed',{initialAttempt,phase,page:currentPage,lastResponse,...errorDiagnostic(error)});await save();
+      });
+    stage='repeat';
+    for(let repeat=1;repeat<=10;repeat++){await wait(60000);await collect(page);}
+  } else {
+    await repeatSession(page,()=>collect(page),wait,handoff?1:10);
+  }
   if(handoff) {
     phase='http-handoff';currentPage=0;lastResponse=undefined;
     await httpHandoff(context,target,maxPages,await page.evaluate(()=>navigator.userAgent),previousHash!,log);

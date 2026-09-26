@@ -53,7 +53,9 @@ jobs:
           # Executable, addons and GeoIP only. Browser profiles live in temporary directories.
           path: ~/.cache/camoufox
           key: ${{ steps.browser-cache.outputs.cache-primary-key }}
-      - name: Collect up to ten times in one browser session
+      - name: Acquire session with bounded 403 retries then collect ten more times
+        env:
+          INITIAL_RETRY: 'true'
         run: timeout --signal=TERM --kill-after=10s 4800s xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npx --no-install tsx scripts/session-reuse-probe.ts
       - name: Upload sanitized session diagnostics
         if: always()
