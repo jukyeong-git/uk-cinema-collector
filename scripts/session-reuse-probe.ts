@@ -32,7 +32,7 @@ const log=(event:string,values:Record<string,unknown>={})=>{
 };
 const setPhase=(value:string)=>{phase=value;log('phase-start',{phase,page:currentPage});};
 const recordResponse=(response:Response|null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,...lastResponse});};
-const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts:10,intervalSeconds:300,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
+const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts:10,intervalSeconds:60,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
 await mkdir(directory,{recursive:true});
 try {
   browser=await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});
