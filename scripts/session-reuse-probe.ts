@@ -1,3 +1,4 @@
+import {httpHandoff} from './http-handoff.ts';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {launchOptions} from 'camoufox-js';
@@ -16,7 +17,9 @@ requireCondition(isRecord(config) && config.source==='bfi-imax' && typeof config
 const source='bfi-imax' as const;
 const maxPages=config.maxPages;
 const target=checkedPageUrl(config.searchUrl).href;
-const directory='work/session-reuse-probe';
+const handoff=process.env.HTTP_HANDOFF==='true';
+const maximumAttempts=handoff?1:10;
+const directory=handoff?'work/http-handoff-probe':'work/session-reuse-probe';
 const started=Date.now();
 let browser:Browser|undefined;
 let phase='launch';
@@ -32,7 +35,7 @@ const log=(event:string,values:Record<string,unknown>={})=>{
 };
 const setPhase=(value:string)=>{phase=value;log('phase-start',{phase,page:currentPage});};
 const recordResponse=(response:Response|null)=>{lastResponse=responseDiagnostic(response);log('http-response',{phase,page:currentPage,...lastResponse});};
-const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts:10,intervalSeconds:60,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
+const save=()=>writeFile(`${directory}/report.json`,JSON.stringify({startedAt:new Date(started).toISOString(),maximumAttempts,intervalSeconds:60,intervalBasis:'after-completion',passed,attempt,events},null,2)+'\n');
 await mkdir(directory,{recursive:true});
 try {
   browser=await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});
@@ -94,10 +97,14 @@ try {
     log('attempt-passed',{pages:payload.pages.length,performances:payload.performances.length,hash,changedFromPrevious:previousHash===undefined?null:previousHash!==hash,cookiesAfter:cookiesAfter.length,hasClearance:cookiesAfter.some(c=>c.name==='cf_clearance')});
     previousHash=hash;
     await save();
-  },async ms=>{log('waiting',{seconds:ms/1000});await sleep(ms);});
+  },async ms=>{log('waiting',{seconds:ms/1000});await sleep(ms);},maximumAttempts);
+  if(handoff) {
+    phase='http-handoff';
+    await httpHandoff(context,target,maxPages,await page.evaluate(()=>navigator.userAgent),previousHash!,log);
+  }
   log('probe-complete',{passed});
 } catch(error) {
-  log('probe-failed',{phase,page:currentPage,passed,baselineEstablished:passed>0,remainingAttemptsCancelled:Math.max(0,10-attempt),code:error instanceof CollectionError?error.code:'EXECUTION_ERROR',lastResponse,...errorDiagnostic(error)});
+  log('probe-failed',{phase,page:currentPage,passed,baselineEstablished:passed>0,remainingAttemptsCancelled:Math.max(0,maximumAttempts-attempt),code:error instanceof CollectionError?error.code:'EXECUTION_ERROR',lastResponse,...errorDiagnostic(error)});
   process.exitCode=1;
 } finally {
   try {await browser?.close();} catch(error) {log('browser-close-failed',errorDiagnostic(error));process.exitCode=1;}
