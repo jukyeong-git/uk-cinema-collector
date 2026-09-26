@@ -1,4 +1,4 @@
-import {acquireSession,retryDelay} from '../scripts/initial-retry.ts';
+import {acquireSession,retryDelay} from './initial-retry.ts';
 export interface MonitorHooks {
   collect:()=>Promise<void>;
   process:()=>Promise<void>;

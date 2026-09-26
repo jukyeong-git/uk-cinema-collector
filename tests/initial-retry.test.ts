@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {acquireSession,retryDelay} from '../scripts/initial-retry.ts';
+import {acquireSession,retryDelay} from '../src/initial-retry.ts';
 test('initial 403 retries stop at ten attempts with nine waits',async()=>{
  let calls=0;const waits:number[]=[];
  await assert.rejects(acquireSession(async()=>{calls++;throw Error();},()=>true,()=>5000,async ms=>{waits.push(ms);},async()=>{}));
