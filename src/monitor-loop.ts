@@ -11,14 +11,14 @@ export interface MonitorHooks {
 export async function monitorLoop(h:MonitorHooks) {
   const check=()=>h.signal.throwIfAborted();
   let started=h.now();
-  await acquireSession(async()=>{check();started=h.now();await h.collect();},()=>h.response().status===403,
+  const collectWithRetry=()=>acquireSession(async()=>{check();started=h.now();await h.collect();},()=>h.response().status===403,
     ()=>retryDelay(h.response().retryAfter,h.now()),async ms=>{check();await h.wait(ms);},h.failed);
-  check();await h.process();
+  await collectWithRetry();check();await h.process();
   while(!h.signal.aborted) {
     // Start-to-start cadence; never overlap or issue catch-up bursts.
     const next=started+60000;
     await h.wait(next>h.now()?next-h.now():60000);
-    check();started=h.now();await h.collect();check();await h.process();
+    check();await collectWithRetry();check();await h.process();
   }
 }
 export async function processChange(changed:boolean,deliver:boolean,send:()=>Promise<void>,acknowledge:()=>Promise<void>) {

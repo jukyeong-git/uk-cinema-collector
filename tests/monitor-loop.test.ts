@@ -10,13 +10,36 @@ test('initial 403 retries then processes every successful collection at one minu
  });
  assert.equal(calls,4);assert.equal(processed,3);assert.deepEqual(waits,[5000,57000,57000]);
 });
-test('post-baseline collection failure terminates without retry or delivery',async()=>{
+test('post-baseline 403 restarts full collection and resumes minute cadence after recovery',async()=>{
+ const controller=new AbortController();let now=0,calls=0,processed=0,status=200;const waits:number[]=[];
+ await monitorLoop({signal:controller.signal,now:()=>now,
+  collect:async()=>{calls++;now+=1000;status=calls===2?403:200;if(status===403)throw Error('page 2 blocked');},
+  process:async()=>{if(++processed===3)controller.abort();},response:()=>({status}),failed:async()=>{},
+  wait:async ms=>{waits.push(ms);now+=ms;},
+ });
+ assert.equal(calls,4);assert.equal(processed,3);assert.deepEqual(waits,[59000,5000,59000]);
+});
+test('each failed follow-up cycle stops after ten attempts without processing partial data',async()=>{
+ let calls=0,processed=0;const waits:number[]=[];
+ await assert.rejects(monitorLoop({signal:new AbortController().signal,now:()=>0,
+  collect:async()=>{if(++calls>1)throw Error('403');},process:async()=>{processed++;},
+  response:()=>({status:403}),failed:async()=>{},wait:async ms=>{waits.push(ms);},
+ }));
+ assert.equal(calls,11);assert.equal(processed,1);assert.deepEqual(waits,[60000,...Array(9).fill(5000)]);
+});
+test('deadline during recovery prevents another collection and does not extend session',async()=>{
+ const controller=new AbortController();let calls=0,processed=0;
+ await assert.rejects(monitorLoop({signal:controller.signal,now:()=>0,
+  collect:async()=>{if(++calls>1)throw Error('403');},process:async()=>{processed++;},
+  response:()=>({status:403}),failed:async()=>{},wait:async ms=>{if(ms===5000)controller.abort();},
+ }));assert.equal(calls,2);assert.equal(processed,1);
+});
+test('429 after baseline stops immediately',async()=>{
  let calls=0,processed=0;
  await assert.rejects(monitorLoop({signal:new AbortController().signal,now:()=>0,
-  collect:async()=>{if(++calls===2)throw Error('403');},process:async()=>{processed++;},
-  response:()=>({status:403}),failed:async()=>{},wait:async()=>{},
- }));
- assert.equal(calls,2);assert.equal(processed,1);
+  collect:async()=>{if(++calls>1)throw Error('429');},process:async()=>{processed++;},
+  response:()=>({status:429}),failed:async()=>{},wait:async()=>{},
+ }));assert.equal(calls,2);assert.equal(processed,1);
 });
 test('deadline during initial retry wait prevents another request',async()=>{
  const controller=new AbortController();let calls=0;

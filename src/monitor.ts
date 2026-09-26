@@ -37,7 +37,7 @@ try {
     signal:controller.signal,now:Date.now,
     wait:async ms=>{log('monitor-wait',{seconds:ms/1000});await sleep(ms,undefined,{signal:controller.signal});},
     response:()=>({status:trace.response?.responseReceived?trace.response.httpStatus:undefined,retryAfter:trace.retryAfter}),
-    failed:async(initialAttempt,error)=>{log('initial-attempt-failed',{initialAttempt,phase:trace.phase,page:trace.page,lastResponse:trace.response,...errorDiagnostic(error)});},
+    failed:async(cycleAttempt,error)=>{log('collection-attempt-failed',{cycleAttempt,maximumAttempts:10,stage:collections===0?'initial':'recovery',phase:trace.phase,page:trace.page,lastResponse:trace.response,...errorDiagnostic(error)});},
     collect:async()=>{
       attempts++;
       for(const file of ['payload.json','payload.json.tmp','pending-state.json','response.json'])await rm(`work/${file}`,{force:true});
