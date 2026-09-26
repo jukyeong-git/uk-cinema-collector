@@ -99,7 +99,7 @@ try {
     await save();
   },async ms=>{log('waiting',{seconds:ms/1000});await sleep(ms);},maximumAttempts);
   if(handoff) {
-    phase='http-handoff';
+    phase='http-handoff';currentPage=0;lastResponse=undefined;
     await httpHandoff(context,target,maxPages,await page.evaluate(()=>navigator.userAgent),previousHash!,log);
   }
   log('probe-complete',{passed});
