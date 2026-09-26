@@ -7,6 +7,11 @@ on:
         type: boolean
         required: true
         default: false
+      duration_minutes:
+        description: Session budget including setup (1-58 minutes; default 58)
+        type: number
+        required: false
+        default: 58
 permissions:
   contents: read
 concurrency:
@@ -16,11 +21,16 @@ jobs:
   collect:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 60
     permissions:
       contents: write
       id-token: write
     steps:
+      - name: Set session deadline
+        env:
+          DURATION_MINUTES: ${{ inputs.duration_minutes || 58 }}
+        run: |
+          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>58)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -62,15 +72,8 @@ jobs:
           # Executable, addons and GeoIP only. Browser profiles live in temporary directories.
           path: ~/.cache/camoufox
           key: ${{ steps.browser-cache.outputs.cache-primary-key }}
-      - name: Collect all pages
-        run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npm run collect
-      - name: Compare acknowledged collection hash
-        id: compare
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: npm run state -- compare
       - name: Check receiver configuration
-        if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
+        if: ${{ inputs.deliver }}
         env:
           ROLE: ${{ secrets.AWS_ROLE_ARN }}
           FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
@@ -81,21 +84,17 @@ jobs:
             exit 1
           fi
       - name: Authenticate receiver access
-        if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
+        if: ${{ inputs.deliver }}
         env:
           RECEIVER_ROLE: ${{ secrets.AWS_ROLE_ARN }}
           RECEIVER_REGION: ${{ secrets.AWS_REGION }}
         run: npx --no-install tsx scripts/authenticate-receiver.ts
-      - name: Deliver collection
-        if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
-        env:
-          RECEIVER_FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
-        run: npm run deliver
-      - name: Save hash after receiver acknowledgement
-        if: ${{ inputs.deliver && steps.compare.outputs.changed == 'true' }}
+      - name: Monitor all pages every minute in one browser session
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npm run state -- acknowledge
+          DELIVER: ${{ inputs.deliver }}
+          RECEIVER_FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
+        run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npx --no-install tsx src/monitor.ts
       - name: Remove transient data
         if: always()
         run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json

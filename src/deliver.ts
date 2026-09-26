@@ -10,7 +10,7 @@ try {
     'lambda','invoke','--function-name',receiver,
     '--invocation-type','RequestResponse','--cli-binary-format','raw-in-base64-out',
     '--payload','fileb://work/payload.json','work/response.json','--no-cli-pager',
-  ],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+  ],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:120000});
   const metadata: unknown = JSON.parse(output);
   const response: unknown = JSON.parse(await readFile('work/response.json','utf8'));
   if(!isRecord(metadata) || metadata.FunctionError || !isRecord(response) || response.accepted !== true) {
