@@ -15,7 +15,7 @@ async function request(method: 'GET' | 'PUT',body?: Record<string, unknown>): Pr
     signal:AbortSignal.timeout(20000),
   });
   if(method === 'GET' && response.status === 404) return null;
-  requireCondition(response.ok, method === 'GET' ? 'STATE_READ_FAILED' : 'STATE_WRITE_FAILED');
+  if(!response.ok)throw new CollectionError(method === 'GET' ? 'STATE_READ_FAILED' : 'STATE_WRITE_FAILED',response.status);
   return response.json();
 }
 try {
@@ -47,6 +47,6 @@ try {
     throw new CollectionError('UNKNOWN_STATE_OPERATION');
   }
 } catch(error) {
-  console.error(JSON.stringify({event:'state-operation-failed',code:error instanceof CollectionError?error.code:'STATE_EXECUTION_ERROR'}));
+  console.error(JSON.stringify({event:'state-operation-failed',code:error instanceof CollectionError?error.code:'STATE_EXECUTION_ERROR',...(error instanceof CollectionError && error.httpStatus?{httpStatus:error.httpStatus}:{})}));
   process.exitCode=1;
 }

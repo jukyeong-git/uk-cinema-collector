@@ -5,7 +5,7 @@ import {launchOptions} from 'camoufox-js';
 import {firefox,type Browser} from 'playwright-core';
 import {collectPageSession,type CollectionTrace} from './browser-collection.ts';
 import {checkedPageUrl} from './parse.ts';
-import {CollectionError,isRecord,requireCondition} from './errors.ts';
+import {CollectionError,isRecord,requireCondition,errorHttpStatus} from './errors.ts';
 import {errorDiagnostic} from './diagnostics.ts';
 import {collectionHash} from './change.ts';
 import {monitorLoop,processChange} from './monitor-loop.ts';
@@ -19,9 +19,16 @@ const trace:CollectionTrace={phase:'launch',page:0};
 const log=(event:string,values:Record<string,unknown>={})=>console.log(JSON.stringify({event,timestamp:new Date().toISOString(),attempt:attempts,...values}));
 const timer=setTimeout(()=>{controller.abort();void browser?.close().catch(()=>{});},deadline-Date.now());
 const run=(script:string,args:string[]=[])=>new Promise<void>((resolve,reject)=>{
-  const child=execFile(process.execPath,['--import','tsx',script,...args],{timeout:150000,signal:controller.signal,env:process.env},error=>error?reject(new CollectionError('MONITOR_SUBPROCESS_FAILED')):resolve());
+  let diagnostics='';
+  const child=execFile(process.execPath,['--import','tsx',script,...args],{timeout:150000,signal:controller.signal,env:process.env},error=>{
+    if(!error){resolve();return;}
+    let status:number|undefined;
+    for(const line of diagnostics.split('\n')){try{const entry:unknown=JSON.parse(line);if(isRecord(entry) && typeof entry.httpStatus==='number')status=entry.httpStatus;}catch{}}
+    reject(new CollectionError('MONITOR_SUBPROCESS_FAILED',status));
+  });
   // Child CLIs expose only sanitized status messages, never payloads or raw errors.
   child.stdout?.pipe(process.stdout);child.stderr?.pipe(process.stderr);
+  child.stderr?.on('data',chunk=>{diagnostics=(diagnostics+String(chunk)).slice(-16384);});
 });
 await mkdir('work',{recursive:true});
 try {
@@ -38,8 +45,10 @@ try {
     wait:async ms=>{log('monitor-wait',{seconds:ms/1000});await sleep(ms,undefined,{signal:controller.signal});},
     response:()=>({status:trace.response?.responseReceived?trace.response.httpStatus:undefined,retryAfter:trace.retryAfter}),
     failed:async(cycleAttempt,error)=>{log('collection-attempt-failed',{cycleAttempt,maximumAttempts:10,stage:collections===0?'initial':'recovery',phase:trace.phase,page:trace.page,lastResponse:trace.response,...errorDiagnostic(error)});},
+    retryFailed:async(retryAttempt,error)=>{log('cycle-retry',{phase:trace.phase,retryAttempt,delaySeconds:60,restartFrom:'collect',httpStatus:errorHttpStatus(error),lastResponse:trace.response,...errorDiagnostic(error)});},
     collect:async()=>{
       attempts++;
+      trace.response=undefined;trace.retryAfter=undefined;
       for(const file of ['payload.json','payload.json.tmp','pending-state.json','response.json'])await rm(`work/${file}`,{force:true});
       const cookies=await context.cookies(target);
       log('collection-start',{hasClearance:cookies.some(c=>c.name==='cf_clearance'),baselineEstablished:collections>0});

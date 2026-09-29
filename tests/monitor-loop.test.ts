@@ -57,3 +57,41 @@ test('acknowledgement happens only after successful delivery',async()=>{
  assert.deepEqual(events,['send','ack']);
  await assert.rejects(processChange(true,true,async()=>{throw Error('rejected');},async()=>assert.fail('must not acknowledge')));
 });
+test('non-403 collection error retries after one minute and resumes collection',async()=>{
+ const controller=new AbortController();let calls=0,processed=0;const waits:number[]=[];
+ await monitorLoop({signal:controller.signal,now:()=>0,
+  collect:async()=>{if(++calls===1)throw Error('network reset');},
+  process:async()=>{processed++;controller.abort();},
+  response:()=>({}),failed:async()=>{},wait:async ms=>{waits.push(ms);},
+ });
+ assert.equal(calls,2);assert.equal(processed,1);assert.deepEqual(waits,[60000]);
+});
+test('processing errors restart full collection after one minute with fresh data',async()=>{
+ for(const phase of ['compare','deliver','acknowledge']) {
+  const controller=new AbortController();const events:string[]=[];let calls=0;
+  await monitorLoop({signal:controller.signal,now:()=>0,
+   collect:async()=>{events.push(`collect-${++calls}`);},
+   process:async()=>{events.push(`${phase}-${calls}`);if(calls===1)throw Error(phase);controller.abort();},
+   response:()=>({status:200}),failed:async()=>{},wait:async ms=>{events.push(`wait-${ms}`);},
+  });
+  assert.deepEqual(events,['collect-1',`${phase}-1`,'wait-60000','collect-2',`${phase}-2`]);
+ }
+});
+test('deadline during processing recovery prevents another BFI request',async()=>{
+ const controller=new AbortController();let calls=0;
+ await assert.rejects(monitorLoop({signal:controller.signal,now:()=>0,
+  collect:async()=>{calls++;},process:async()=>{throw Error('state');},
+  response:()=>({status:200}),failed:async()=>{},wait:async ms=>{assert.equal(ms,60000);controller.abort();},
+ }));
+ assert.equal(calls,1);
+});
+test('processing HTTP 403 and 429 do not trigger full-cycle retries',async()=>{
+ for(const httpStatus of [403,429]) {
+  let calls=0;
+  await assert.rejects(monitorLoop({signal:new AbortController().signal,now:()=>0,
+   collect:async()=>{calls++;},process:async()=>{throw Object.assign(Error('state'),{httpStatus});},
+   response:()=>({status:200}),failed:async()=>{},wait:async()=>assert.fail('must not retry'),
+  }));
+  assert.equal(calls,1);
+ }
+});
