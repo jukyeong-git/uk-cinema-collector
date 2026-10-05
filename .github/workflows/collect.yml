@@ -40,19 +40,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Browser cache key
-        id: browser-key
-        # Refresh upstream browser/GeoIP downloads weekly or when dependencies change.
-        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      # Reuse the verified runtime; upgrades require explicit validation.
       - name: Restore Camoufox runtime
         id: browser-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/camoufox
-          key: camoufox-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-${{ steps.browser-key.outputs.week }}
+          key: camoufox-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-2026-W40
       - name: Download Camoufox runtime on cache miss
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: npx --no-install camoufox-js fetch
+        run: npx --no-install tsx scripts/fetch-browser.ts
       - name: Ensure virtual display tools
         run: |
           if command -v Xvfb >/dev/null && command -v xvfb-run >/dev/null && command -v xauth >/dev/null; then

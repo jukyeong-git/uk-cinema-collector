@@ -13,3 +13,9 @@ test('does not install packages for an unrelated browser failure or expose raw e
 test('fails if installation did not repair the browser',async()=>{
  let installs=0;await assert.rejects(ensureBrowser(async()=>{throw new Error('error while loading shared libraries');},()=>installs++,()=>{}),/BROWSER_PREFLIGHT_FAILED_AFTER_INSTALL/);assert.equal(installs,1);
 });
+test('records missing runtime cause while keeping URLs and paths private',async()=>{
+ const logs:{event:string;values:unknown}[]=[];
+ await assert.rejects(ensureBrowser(async()=>{throw new Error('Executable not found at /home/runner/cache; see https://example.com/?token=private');},()=>assert.fail(),(event,values)=>logs.push({event,values})),/BROWSER_PREFLIGHT_FAILED/);
+ assert.equal(logs[0].event,'browser-preflight-error');
+ const text=JSON.stringify(logs);assert.match(text,/MISSING_RUNTIME/);assert.ok(!text.includes('private'));assert.ok(!text.includes('/home/runner'));
+});
