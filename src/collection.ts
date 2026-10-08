@@ -23,12 +23,13 @@ export function validateCollection(p: unknown, now = Date.now()): Collection {
   check(rowCount === p.performances.length, 'MISSING_ROWS');
   const ids = new Set<string>();
   for (const r of p.performances) {
-    keys(r, ['id','articleId','title','startsAtLocal','timeZone','status']);
+    keys(r, ['id','articleId','title','startsAtLocal','timeZone','status','onSaleAtLocal']);
     check(typeof r.id === 'string' && typeof r.articleId === 'string' && uuid.test(r.id) && uuid.test(r.articleId), 'INVALID_ID');
     check(!ids.has(r.id.toLowerCase()), 'DUPLICATE_ID');
     ids.add(r.id.toLowerCase());
     check(typeof r.title === 'string' && r.title.trim().length > 0 && r.title.length <= 300, 'INVALID_TITLE');
     check(r.timeZone === 'Europe/London' && validLocalTime(r.startsAtLocal), 'INVALID_DATE');
+    if(Object.hasOwn(r,'onSaleAtLocal'))check(validLocalTime(r.onSaleAtLocal)&&r.status==='unavailable','INVALID_ON_SALE_DATE');
     check(typeof r.status === 'string' && ['available','soldout','unavailable'].includes(r.status), 'INVALID_STATUS');
   }
   // Every field has been checked above; preserve the original payload object.

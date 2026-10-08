@@ -5,6 +5,7 @@ export interface Performance {
   startsAtLocal: string;
   timeZone: 'Europe/London';
   status: 'available' | 'soldout' | 'unavailable';
+  onSaleAtLocal?: string;
 }
 
 export interface Collection {

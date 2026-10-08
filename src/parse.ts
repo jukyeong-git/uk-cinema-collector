@@ -36,12 +36,15 @@ export function parsePage(html: string, url: string, number: number) {
     const href = name.attr('href');
     requireCondition(href, 'MISSING_PERFORMANCE_LINK');
     const link = row.find('div.item-link');
+    const saleText=link.find('.av_on_sale_date').text().trim().replace(/\s+/g,' ');
+    const onSaleAtLocal=link.find('.av_on_sale_label').length && /^\w+ \d{1,2} \w+ \d{4} \d{2}:\d{2}$/.test(saleText)?localTime(saleText):undefined;
     return {
       id: idFrom(href, 'context_id', url),
       articleId: idFrom(href, 'article_id', url),
       title: name.text().trim(),
       startsAtLocal: localTime(row.find('span.start-date').text()),
       timeZone: 'Europe/London',
+      ...(onSaleAtLocal?{onSaleAtLocal}:{}),
       status: link.hasClass('soldout') ? 'soldout' : link.find('a.btn-primary').length ? 'available' : 'unavailable',
     };
   });

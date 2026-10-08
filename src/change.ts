@@ -13,6 +13,7 @@ export function collectionHash(value: unknown) {
     startsAtLocal: row.startsAtLocal,
     timeZone: row.timeZone,
     status: row.status,
+    ...(row.onSaleAtLocal?{onSaleAtLocal:row.onSaleAtLocal}:{}),
   })).sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return createHash('sha256').update(JSON.stringify({version:1,source:payload.source,performances:rows})).digest('hex');
 }

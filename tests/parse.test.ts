@@ -20,3 +20,9 @@ test('rejects challenge HTML',()=>assert.throws(()=>parsePage('<title>Just a mom
 
 test('rejects another venue instead of mixing its schedule into IMAX',()=>assert.throws(()=>parsePage(page().replace('BFI IMAX','BFI Southbank'),base,1),/UNEXPECTED_VENUE/));
 test('requires venue evidence on every row',()=>assert.throws(()=>parsePage(page().replace('<div class="item-venue">BFI IMAX</div>',''),base,1),/UNEXPECTED_VENUE/));
+
+test('extracts the advertised booking date while preserving unavailable status',()=>{
+ const html=page({status:'unavailable'}).replace('<div class="item-link unavailable">','<div class="item-link unavailable"><span class="av_on_sale_label">On sale</span><div class="av_on_sale_date">Friday 09 October 2026 16:00</div>');
+ const row=parsePage(html,base,1).rows[0];assert.equal(row.onSaleAtLocal,'2026-10-09T16:00:00');assert.equal(row.status,'unavailable');
+ const tbd=parsePage(html.replace('Friday 09 October 2026 16:00','To be determined'),base,1).rows[0];assert.equal(tbd.onSaleAtLocal,undefined);
+});
