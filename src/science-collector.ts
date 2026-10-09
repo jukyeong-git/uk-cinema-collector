@@ -1,7 +1,7 @@
 import {load} from 'cheerio';
 export interface Screening {id:string;productionId:string;title:string;startsAt:string;status:'available'|'soldout'|'unavailable';url:string}
 export interface Film {title:string;url:string;keywordIds:string[]}
-export interface Collection {collectedAt:string;films:Film[];rows:Screening[];through:string}
+export interface Collection {source:'science-museum';collectedAt:string;films:Film[];rows:Screening[];through:string}
 const root='https://www.sciencemuseum.org.uk';
 export function filmLinks(html:string):Film[]{
  const $=load(html),section=$('section[aria-labelledby="a-blockbuster-films"]');
@@ -43,5 +43,5 @@ export async function collect(fetcher:typeof fetch=fetch,now=new Date()):Promise
  }));
  const unique=new Map<string,Screening>();for(const row of all){const key=screeningKey(row),previous=unique.get(key);if(previous&&JSON.stringify(previous)!==JSON.stringify(row))throw Error('CONFLICTING_SCREENING');unique.set(key,row);}
  if(unique.size>3000)throw Error('TOO_MANY_SCREENINGS');
- return {collectedAt:new Date().toISOString(),films,rows:[...unique.values()].sort((a,b)=>screeningKey(a).localeCompare(screeningKey(b))),through:end};
+ return {source:'science-museum',collectedAt:new Date().toISOString(),films,rows:[...unique.values()].sort((a,b)=>screeningKey(a).localeCompare(screeningKey(b))),through:end};
 }

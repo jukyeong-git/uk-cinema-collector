@@ -155,7 +155,7 @@ jobs:
       - name: Monitor Science Museum every minute
         env:
           DELIVER: ${{ inputs.deliver }}
-          SCIENCE_RECEIVER_FUNCTION: ${{ secrets.SCIENCE_RECEIVER_FUNCTION }}
+          RECEIVER_FUNCTION: ${{ secrets.RECEIVER_FUNCTION }}
         run: xvfb-run -a -s "-screen 0 1440x900x24 -nolisten tcp" npx --no-install tsx src/science-monitor.ts
       - name: Remove transient Science Museum data
         if: always()
