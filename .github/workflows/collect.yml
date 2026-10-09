@@ -95,3 +95,39 @@ jobs:
       - name: Remove transient data
         if: always()
         run: rm -f work/payload.json work/payload.json.tmp work/response.json work/pending-state.json
+  science-museum:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set session deadline
+        env:
+          DURATION_MINUTES: ${{ inputs.duration_minutes || 59 }}
+        run: |
+          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>59)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Authenticate receiver access
+        if: ${{ inputs.deliver }}
+        env:
+          RECEIVER_ROLE: ${{ secrets.AWS_ROLE_ARN }}
+          RECEIVER_REGION: ${{ secrets.AWS_REGION }}
+        run: npx --no-install tsx scripts/authenticate-receiver.ts
+      - name: Monitor Science Museum every minute
+        env:
+          DELIVER: ${{ inputs.deliver }}
+          SCIENCE_RECEIVER_FUNCTION: ${{ secrets.SCIENCE_RECEIVER_FUNCTION }}
+        run: npx --no-install tsx src/science-monitor.ts
+      - name: Remove transient Science Museum data
+        if: always()
+        run: rm -f work/science-payload.json work/science-response.json
