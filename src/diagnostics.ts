@@ -1,4 +1,4 @@
-import {isRecord} from './errors.ts';
+import {CollectionError,isRecord} from './errors.ts';
 
 interface DiagnosticResponse {
   headers(): Record<string, string>;
@@ -27,5 +27,5 @@ export function errorDiagnostic(value: unknown) {
   const errorType=['CollectionError','TimeoutError','TypeError','Error'].includes(typeof error.name === 'string' ? error.name : '')?error.name:'OtherError';
   const text=String(error?.message ?? '');
   const networkCode=['NS_ERROR_NET_RESET','NS_ERROR_CONNECTION_REFUSED','NS_ERROR_UNKNOWN_HOST','NS_ERROR_NET_TIMEOUT','NS_ERROR_ABORT','ERR_CONNECTION_RESET','ERR_NAME_NOT_RESOLVED'].find(code=>text.includes(code));
-  return {errorType,...(networkCode?{networkCode}:{})};
+  return {errorType,...(value instanceof CollectionError && /^[A-Z][A-Z0-9_]{0,79}$/.test(value.code)?{code:value.code}:{}),...(networkCode?{networkCode}:{})};
 }

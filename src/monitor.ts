@@ -70,6 +70,7 @@ try {
   if(controller.signal.aborted)log('monitor-complete',{reason:'deadline',collections,attempts});
   else {log('monitor-failed',{phase:trace.phase,page:trace.page,collections,lastResponse:trace.response,code:error instanceof CollectionError?error.code:'EXECUTION_ERROR',...errorDiagnostic(error)});process.exitCode=1;}
 } finally {
+  if(collections===0){log('monitor-failed',{code:'NO_SUCCESSFUL_COLLECTIONS',collections,attempts});process.exitCode=1;}
   clearTimeout(timer);await browser?.close().catch(()=>{});
   for(const file of ['payload.json','payload.json.tmp','pending-state.json','response.json'])await rm(`work/${file}`,{force:true});
   if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Session monitor\n\n- Completed collections: ${collections}\n- Attempts: ${attempts}\n- Duration: ${Math.round((Date.now()-started)/1000)} seconds\n- Result: ${process.exitCode===1?'failed':'completed'}\n`);

@@ -10,3 +10,15 @@ test('rejects empty collection',()=>{const p=fixture();p.performances=[];p.pages
 test('rejects private fields in outgoing payload',()=>{const p=fixture();Object.assign(p,{cookie:'example'});assert.throws(()=>validateCollection(p));});
 test('rejects invalid status',()=>{const p=fixture();p.performances[0].status='unknown';assert.throws(()=>validateCollection(p));});
 test('rejects stale data',()=>{const p=fixture();p.collectedAt='2000-01-01T00:00:00Z';assert.throws(()=>validateCollection(p));});
+
+test('same ID at different times is valid, identical screening remains rejected',()=>{
+ const p=fixture();p.performances.push({...p.performances[0],startsAtLocal:'2026-09-18T23:00:00'});p.pages[0].count=2;
+ assert.equal(validateCollection(p).performances.length,2);
+ p.performances[1].startsAtLocal=p.performances[0].startsAtLocal;assert.throws(()=>validateCollection(p),/DUPLICATE_SCREENING/);
+});
+
+import {collectionHash} from '../src/change.ts';
+test('same-ID times produce a stable hash regardless of result order',()=>{
+ const p=fixture();p.performances.push({...p.performances[0],startsAtLocal:'2026-09-18T23:00:00'});p.pages[0].count=2;
+ assert.equal(collectionHash(p),collectionHash({...p,performances:[...p.performances].reverse()}));
+});

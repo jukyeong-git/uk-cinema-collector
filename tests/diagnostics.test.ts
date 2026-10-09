@@ -16,3 +16,9 @@ test('exports only controlled error categories',()=>{
  assert.deepEqual(errorDiagnostic({name:'TimeoutError',message:'https://site/?token=SECRET'}),{errorType:'TimeoutError'});
  assert.deepEqual(errorDiagnostic({name:'SECRET',message:'NS_ERROR_NET_RESET https://secret'}),{errorType:'OtherError',networkCode:'NS_ERROR_NET_RESET'});
 });
+
+import {CollectionError} from '../src/errors.ts';
+test('reports controlled validation codes without raw errors',()=>{
+ assert.deepEqual(errorDiagnostic(new CollectionError('DUPLICATE_SCREENING')),{errorType:'CollectionError',code:'DUPLICATE_SCREENING'});
+ assert.deepEqual(errorDiagnostic(new CollectionError('https://secret/?token=SECRET')),{errorType:'CollectionError'});
+});

@@ -14,7 +14,7 @@ export function collectionHash(value: unknown) {
     timeZone: row.timeZone,
     status: row.status,
     ...(row.onSaleAtLocal?{onSaleAtLocal:row.onSaleAtLocal}:{}),
-  })).sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  })).sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : a.startsAtLocal < b.startsAtLocal ? -1 : a.startsAtLocal > b.startsAtLocal ? 1 : 0);
   return createHash('sha256').update(JSON.stringify({version:1,source:payload.source,performances:rows})).digest('hex');
 }
 
