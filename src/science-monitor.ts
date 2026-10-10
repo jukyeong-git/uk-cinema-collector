@@ -8,6 +8,7 @@ await mkdir('work',{recursive:true});let success=0,lastHash='',pending=false;let
 let context:import('playwright-core').BrowserContext|undefined;
 let phase='launch';
 let apiPagePromise:Promise<import('playwright-core').Page>|undefined;
+const timer=setTimeout(()=>{void browser?.close().catch(()=>{});},Math.max(0,deadline-Date.now()));
 const browserFetch:typeof fetch=async(input,init)=>{
  const url=String(input);if(!context)throw Error('BROWSER_NOT_READY');
  if(new URL(url).hostname==='www.sciencemuseum.org.uk'){
@@ -22,18 +23,18 @@ const browserFetch:typeof fetch=async(input,init)=>{
 try{
  browser=await firefox.launch({...await launchOptions({headless:false,geoip:true,locale:'en-GB'}),timeout:60000});context=await browser.newContext();
  while(Date.now()<deadline-25000){const start=Date.now();try{
-  const payload=await collect(browserFetch);const hash=createHash('sha256').update(JSON.stringify({films:payload.films,rows:payload.rows})).digest('hex');
+  const payload=await collect(browserFetch);if(Date.now()>=deadline)break;const hash=createHash('sha256').update(JSON.stringify({films:payload.films,rows:payload.rows})).digest('hex');
   let sent=0;
   if(process.env.DELIVER==='true'&&(hash!==lastHash||pending)){
    if(!process.env.RECEIVER_FUNCTION)throw Error('MISSING_RECEIVER');
    await writeFile('work/science-payload.json',JSON.stringify(payload));
-   const meta=JSON.parse(execFileSync('aws',['lambda','invoke','--function-name',process.env.RECEIVER_FUNCTION,'--invocation-type','RequestResponse','--payload','fileb://work/science-payload.json','work/science-response.json','--no-cli-pager'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:40000}));
+   const meta=JSON.parse(execFileSync('aws',['lambda','invoke','--function-name',process.env.RECEIVER_FUNCTION,'--invocation-type','RequestResponse','--payload','fileb://work/science-payload.json','work/science-response.json','--no-cli-pager'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:Math.max(1,Math.min(40000,deadline-Date.now()))}));
    const response=JSON.parse(await readFile('work/science-response.json','utf8'));if(meta.FunctionError||response.accepted!==true)throw Error('RECEIVER_REJECTED');pending=response.pending>0;sent=response.sent;lastHash=hash;
   }
   success++;console.log(JSON.stringify({event:'science-cycle-complete',films:payload.films.length,rows:payload.rows.length,sent,pending}));
- }catch(e){const message=e instanceof Error?e.message:'';console.log(JSON.stringify({event:'science-cycle-failed',phase,errorType:e instanceof Error?e.name:'unknown',code:/^[A-Z][A-Z0-9_]{0,80}$/.test(message)?message:'EXECUTION_ERROR'}));}
+ }catch(e){if(Date.now()>=deadline)break;const message=e instanceof Error?e.message:'';console.log(JSON.stringify({event:'science-cycle-failed',phase,errorType:e instanceof Error?e.name:'unknown',code:/^[A-Z][A-Z0-9_]{0,80}$/.test(message)?message:'EXECUTION_ERROR'}));}
  const delay=Math.min(Math.max(0,60000-(Date.now()-start)),Math.max(0,deadline-Date.now()));if(delay)await sleep(delay);
  }
  if(!success)process.exitCode=1;
  console.log(JSON.stringify({event:'science-monitor-complete',success}));
-}finally{await browser?.close();await rm('work/science-payload.json',{force:true});await rm('work/science-response.json',{force:true});}
+}finally{clearTimeout(timer);await browser?.close();await rm('work/science-payload.json',{force:true});await rm('work/science-response.json',{force:true});}
