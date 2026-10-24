@@ -8,10 +8,10 @@ on:
         required: true
         default: false
       duration_minutes:
-        description: Maximum session minutes; always stop at next half-hour (1-60; default 60)
+        description: Session budget including setup (1-238 minutes; default 238)
         type: number
         required: false
-        default: 60
+        default: 238
 permissions:
   contents: read
 concurrency:
@@ -21,16 +21,16 @@ jobs:
   collect:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 240
     permissions:
       contents: write
       id-token: write
     steps:
       - name: Set session deadline
         env:
-          DURATION_MINUTES: ${{ inputs.duration_minutes || 60 }}
+          DURATION_MINUTES: ${{ inputs.duration_minutes || 238 }}
         run: |
-          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>60)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Math.min(Date.now()+n*60000,(Math.floor(Date.now()/1800000)+1)*1800000)}\n`);'
+          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>238)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
@@ -98,16 +98,16 @@ jobs:
   science-museum:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 240
     permissions:
       contents: read
       id-token: write
     steps:
       - name: Set session deadline
         env:
-          DURATION_MINUTES: ${{ inputs.duration_minutes || 60 }}
+          DURATION_MINUTES: ${{ inputs.duration_minutes || 238 }}
         run: |
-          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>60)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Math.min(Date.now()+n*60000,(Math.floor(Date.now()/1800000)+1)*1800000)}\n`);'
+          node -e 'const n=Number(process.env.DURATION_MINUTES);if(!Number.isInteger(n)||n<1||n>238)process.exit(1);require("fs").appendFileSync(process.env.GITHUB_ENV,`COLLECTOR_END_AT=${Date.now()+n*60000}\n`);'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
