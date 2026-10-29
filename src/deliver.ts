@@ -1,7 +1,10 @@
+import {randomUUID} from 'node:crypto';
+import {logSummary} from './logging/contract.ts';
 import {execFileSync} from 'node:child_process';
 import {isRecord} from './errors.ts';
 import {readFile} from 'node:fs/promises';
 
+const started=Date.now(),runId=randomUUID();
 // Invoke the configured receiver without printing its identity or payload.
 try {
   const receiver = process.env.RECEIVER_FUNCTION;
@@ -16,8 +19,9 @@ try {
   if(!isRecord(metadata) || metadata.FunctionError || !isRecord(response) || response.accepted !== true) {
     throw new Error('Receiver rejected collection');
   }
-  console.log('Receiver accepted collection');
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'deliver',runId,status:response.deliveryDeferred===true?'partial':'complete',durationMs:Date.now()-started,diagnostics:{originalEvent:'Receiver accepted collection',accepted:true,deliveryDeferred:response.deliveryDeferred===true}});
 } catch {
   console.error('Delivery failed; inspect receiver privately.');
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'deliver',runId,status:'failed',durationMs:Date.now()-started,error:{category:'delivery',code:'RECEIVER_DELIVERY_FAILED'}});
   process.exitCode = 1;
 }

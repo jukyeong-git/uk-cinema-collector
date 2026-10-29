@@ -1,7 +1,12 @@
+import {randomUUID} from 'node:crypto';
+import {logSummary} from './logging/contract.ts';
 import {readFile,writeFile,appendFile} from 'node:fs/promises';
 import {planChange,parseStoredState,acknowledgedState} from './change.ts';
 import {CollectionError,isRecord,requireCondition} from './errors.ts';
 
+const started=Date.now(),runId=randomUUID();
+let diagnostics:Record<string,unknown>={};
+const operation=process.argv[2]==='compare'?'state_compare':process.argv[2]==='acknowledge'?'state_acknowledge':'state_unknown';
 // Only the acknowledged hash is public. Full schedules are never committed.
 const repo = process.env.GITHUB_REPOSITORY;
 const token = process.env.GH_TOKEN;
@@ -30,7 +35,7 @@ try {
     const pending = {...planChange(payload,previous),sha:isRecord(file) && typeof file.sha === 'string' ? file.sha : null};
     await writeFile('work/pending-state.json',JSON.stringify(pending));
     if(process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT,`changed=${pending.changed}\n`);
-    console.log(JSON.stringify({event:'comparison-complete',changed:pending.changed,baselineExists:Boolean(previous)}));
+    diagnostics={originalEvent:'comparison-complete',changed:pending.changed,baselineExists:Boolean(previous)};
   } else if(process.argv[2] === 'acknowledge') {
     const pending: unknown = JSON.parse(await readFile('work/pending-state.json','utf8'));
     const response: unknown = JSON.parse(await readFile('work/response.json','utf8'));
@@ -42,11 +47,13 @@ try {
       content:Buffer.from(JSON.stringify(state)+'\n').toString('base64'),
       ...(pending.sha?{sha:pending.sha}:{}),
     });
-    console.log(JSON.stringify({event:'acknowledged-hash-saved'}));
+    diagnostics={originalEvent:'acknowledged-hash-saved'};
   } else {
     throw new CollectionError('UNKNOWN_STATE_OPERATION');
   }
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation,runId,status:'complete',durationMs:Date.now()-started,provider:'github',diagnostics});
 } catch(error) {
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation,runId,status:'failed',durationMs:Date.now()-started,provider:'github',error:{category:'state',code:error instanceof CollectionError?error.code:'STATE_EXECUTION_ERROR',...(error instanceof CollectionError && error.httpStatus?{httpStatus:error.httpStatus}:{})}});
   console.error(JSON.stringify({event:'state-operation-failed',code:error instanceof CollectionError?error.code:'STATE_EXECUTION_ERROR',...(error instanceof CollectionError && error.httpStatus?{httpStatus:error.httpStatus}:{})}));
   process.exitCode=1;
 }

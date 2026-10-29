@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {logSummary} from './logging/contract.ts';
 import {collectPageSession,type CollectionTrace} from './browser-collection.ts';
 import type {Browser} from 'playwright-core';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
@@ -6,10 +8,12 @@ import {firefox,chromium} from 'playwright-core';
 import {checkedPageUrl} from './parse.ts';
 import {CollectionError,isRecord,requireCondition} from './errors.ts';
 import {responseDiagnostic,errorDiagnostic} from './diagnostics.ts';
-const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
-requireCondition(isRecord(config) && config.source === 'bfi-imax' && typeof config.searchUrl === 'string' && typeof config.maxPages === 'number' && Number.isInteger(config.maxPages) && config.maxPages >= 1 && config.maxPages <= 100, 'INVALID_CONFIG');
-const target = checkedPageUrl(config.searchUrl).href;
-const started = Date.now();
+const started = Date.now(), runId=randomUUID();
+const {maxPages,target}=await (async()=>{try {
+  const config: unknown = JSON.parse(await readFile(new URL('../config/bfi.json', import.meta.url), 'utf8'));
+  requireCondition(isRecord(config) && config.source === 'bfi-imax' && typeof config.searchUrl === 'string' && typeof config.maxPages === 'number' && Number.isInteger(config.maxPages) && config.maxPages >= 1 && config.maxPages <= 100, 'INVALID_CONFIG');
+  return {maxPages:config.maxPages as number,target:checkedPageUrl(config.searchUrl as string).href};
+} catch {logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'bfi_collect',runId,status:'failed',durationMs:Date.now()-started,error:{category:'configuration',code:'INVALID_CONFIG'}});throw new CollectionError('INVALID_CONFIG');}})();
 let browser: Browser | undefined;
 let phase = 'prepare';
 let phaseStarted=started;
@@ -34,16 +38,17 @@ try {
   log('browser-started',{engine,version:browser.version(),headless:engine !== 'camoufox',displayAvailable:Boolean(process.env.DISPLAY)});
   const page = await browser.newPage({viewport:{width:1440,height:900},...(engine !== 'camoufox'?{locale:'en-GB'}:{})});
   const trace:CollectionTrace={phase:'search-home',page:0};
-  const payload=await collectPageSession(page,target,config.maxPages,trace,(event,values)=>{phase=trace.phase;currentPage=trace.page;lastResponse=trace.response;log(event,values);});
+  const payload=await collectPageSession(page,target,maxPages,trace,(event,values)=>{phase=trace.phase;currentPage=trace.page;lastResponse=trace.response;log(event,values);});
   await writeFile('work/payload.json.tmp',JSON.stringify(payload));
   await rename('work/payload.json.tmp','work/payload.json');
   const summary={programmes:new Set(payload.performances.map(row=>row.articleId.toLowerCase())).size,collected:payload.performances.length,pages:payload.pages.length,elapsedMs:Date.now()-started};
-  log('collection-complete',summary);
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'bfi_collect',runId,status:'complete',durationMs:Date.now()-started,diagnostics:{originalEvent:'collection-complete',programmes:summary.programmes,pages:summary.pages,performances:summary.collected}});
   if(process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY,`## Collection verified\n\n- Scope: all published BFI IMAX schedules (no keyword/date filter)\n- Programmes: ${summary.programmes}\n- Pages: ${summary.pages}\n- Performances: ${summary.collected}\n- Duration: ${(summary.elapsedMs/1000).toFixed(1)} seconds\n\nSchedule JSON is not retained as an artifact. Cookies and raw HTML are never exported.\n`);
 } catch(error) {
   await rm('work/payload.json',{force:true});
   // Browser/network errors can contain session URLs. Expose only controlled codes.
   log('collection-failed',{phase,code:error instanceof CollectionError ? error.code : 'EXECUTION_ERROR',page:currentPage,phaseElapsedMs:Date.now()-phaseStarted,lastResponse,...errorDiagnostic(error)});
+  logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'bfi_collect',runId,status:'failed',durationMs:Date.now()-started,error:{category:'collection',code:error instanceof CollectionError?error.code:'EXECUTION_ERROR'},diagnostics:{phase,page:currentPage,...errorDiagnostic(error)}});
   process.exitCode=1;
 } finally {
   await browser?.close();

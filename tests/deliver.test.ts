@@ -10,6 +10,7 @@ const script = fileURLToPath(new URL('../src/deliver.ts', import.meta.url));
 const loader = import.meta.resolve('tsx');
 const cases = [
   {name:'acknowledged', metadata:'{}', response:'{"accepted":true}', success:true},
+  {name:'deferred', metadata:'{}', response:'{"accepted":true,"deliveryDeferred":true}', success:true, partial:true},
   {name:'rejected', metadata:'{}', response:'{"accepted":false}'},
   {name:'function error', metadata:'{"FunctionError":"Unhandled"}', response:'{"accepted":true}'},
   {name:'invalid metadata', metadata:'invalid', response:'{"accepted":true}'},
@@ -38,8 +39,16 @@ printf '%s' "$MOCK_METADATA"
       });
       assert.ifError(result.error);
       assert.equal(result.status,scenario.success?0:1);
-      assert.equal(result.stdout,scenario.success?'Receiver accepted collection\n':'');
-      assert.equal(result.stderr,scenario.success?'':'Delivery failed; inspect receiver privately.\n');
+      const output=result.stdout+result.stderr;
+      const lines=output.trim().split('\n');
+      const legacy=lines.find(line=>!line.startsWith('{'));
+      const summary=lines.find(line=>line.startsWith('{'))!;
+      assert.equal(legacy,scenario.success?undefined:'Delivery failed; inspect receiver privately.');
+      const row=JSON.parse(summary);
+      assert.equal(row.event,'run_summary');assert.equal(row.schemaVersion,1);
+      assert.equal(row.status,scenario.success?(scenario.partial?'partial':'complete'):'failed');
+      assert.ok(!output.includes('private-detail'));
+      if(!scenario.success)assert.equal(result.stdout,'');
     } finally {
       await rm(directory,{recursive:true,force:true});
     }

@@ -1,3 +1,4 @@
+import {logSummary} from './logging/contract';
 type SchedulerEnv = {[K in keyof Env]:string} & {GITHUB_TOKEN?:string};
 export type DispatchFetch=(url:string,options:RequestInit)=>Promise<Response>;
 export async function dispatch(env:SchedulerEnv, fetcher:DispatchFetch = fetch) {
@@ -29,10 +30,14 @@ export async function dispatch(env:SchedulerEnv, fetcher:DispatchFetch = fetch) 
 }
 export default {
   async scheduled(controller:ScheduledController,env:SchedulerEnv) {
+    const started=Date.now(),runId=crypto.randomUUID();
     try {
-      console.log(JSON.stringify({...await dispatch(env),scheduledTime:controller.scheduledTime}));
+      const result=await dispatch(env);
+      logSummary({event:'run_summary',country:'GB',city:'London',component:'scheduler',operation:'workflow_dispatch',runId,status:result.event==='scheduler-disabled'?'skipped':'complete',durationMs:Date.now()-started,provider:'github',diagnostics:{originalEvent:result.event,scheduledTime:controller.scheduledTime,...('status' in result?{httpStatus:result.status,deliveryEnabled:result.deliveryEnabled}:{})}});
     } catch(error) {
-      console.error(JSON.stringify({event:'dispatch-failed',code:error instanceof Error?error.message:'DISPATCH_FAILED'}));
+      const code=error instanceof Error && /^[A-Z][A-Z0-9_]{0,80}$/.test(error.message)?error.message:'DISPATCH_FAILED';
+      console.error(JSON.stringify({event:'dispatch-failed',code}));
+      logSummary({event:'run_summary',country:'GB',city:'London',component:'scheduler',operation:'workflow_dispatch',runId,status:'failed',durationMs:Date.now()-started,provider:'github',error:{category:'dispatch',code}});
       throw error;
     }
   },
