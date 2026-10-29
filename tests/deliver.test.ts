@@ -40,10 +40,11 @@ printf '%s' "$MOCK_METADATA"
       assert.ifError(result.error);
       assert.equal(result.status,scenario.success?0:1);
       const output=result.stdout+result.stderr;
-      const lines=output.trim().split('\n');
+      const lines=output.trim() ? output.trim().split('\n') : [];
       const legacy=lines.find(line=>!line.startsWith('{'));
       const summary=lines.find(line=>line.startsWith('{'))!;
       assert.equal(legacy,scenario.success?undefined:'Delivery failed; inspect receiver privately.');
+      if (scenario.success && !scenario.partial) { assert.equal(output, ''); return; }
       const row=JSON.parse(summary);
       assert.equal(row.event,'run_summary');assert.equal(row.schemaVersion,1);
       assert.equal(row.status,scenario.success?(scenario.partial?'partial':'complete'):'failed');

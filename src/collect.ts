@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {logSummary} from './logging/contract.ts';
+import {logSummary, sanitizeLogValue} from './logging/contract.ts';
 import {collectPageSession,type CollectionTrace} from './browser-collection.ts';
 import type {Browser} from 'playwright-core';
 import {writeFile,readFile,mkdir,rm,rename,appendFile} from 'node:fs/promises';
@@ -24,7 +24,7 @@ const setPhase=(value: string)=>{
   phase=value;phaseStarted=Date.now();
   log('phase-start',{phase,page:currentPage});
 };
-const log = (event: string, values: Record<string, unknown> = {}) => console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,...values}));
+const log = (event: string, values: Record<string, unknown> = {}) => { if (/failed|retry/i.test(event)) console.error(JSON.stringify(sanitizeLogValue({event,...values}))); };
 await mkdir('work', {recursive:true});
 await rm('work/payload.json', {force:true});
 await rm('work/payload.json.tmp', {force:true});

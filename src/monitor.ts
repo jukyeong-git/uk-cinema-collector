@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {logSummary} from './logging/contract.ts';
+import {logSummary, emitLogRecord} from './logging/contract.ts';
 import {readFile,writeFile,mkdir,rename,rm,appendFile} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
@@ -19,7 +19,7 @@ let browser:Browser|undefined;
 let attempts=0,collections=0,lastCycleFailed=false,deliveryDeferred=false;
 let lastError:{category:string;code?:string;httpStatus?:number}|undefined;
 const trace:CollectionTrace={phase:'launch',page:0};
-const log=(event:string,values:Record<string,unknown>={})=>console.log(JSON.stringify({event,timestamp:new Date().toISOString(),attempt:attempts,...values}));
+const log=(event:string,values:Record<string,unknown>={})=> { if (/failed|retry/i.test(event) || event === 'cycle-complete') emitLogRecord({event,country:'GB',city:'London',component:'collector',operation:'bfi_monitor',runId,status:/failed|retry/i.test(event)?'failed':deliveryDeferred?'skipped':'complete',durationMs:Date.now()-started,diagnostics:values}); };
 const timer=setTimeout(()=>{controller.abort();void browser?.close().catch(()=>{});},deadline-Date.now());
 const run=(script:string,args:string[]=[])=>new Promise<void>((resolve,reject)=>{
   let diagnostics='';

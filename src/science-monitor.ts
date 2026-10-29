@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {logSummary} from './logging/contract.ts';
+import {logSummary, emitLogRecord} from './logging/contract.ts';
 import {firefox,type Browser} from 'playwright-core';
 import {launchOptions} from 'camoufox-js';
 import {errorDiagnostic,responseDiagnostic} from './diagnostics.ts';
@@ -11,7 +11,7 @@ const deadline=Number(process.env.COLLECTOR_END_AT);if(!Number.isFinite(deadline
 await mkdir('work',{recursive:true});let success=0,lastHash='',pending=false;let browser:Browser|undefined;
 let context:import('playwright-core').BrowserContext|undefined;
 let phase='launch',attempt=0,requestId=0,lastCycleFailed=false,completed=false;let lastError:{category:string;code?:string}|undefined;
-const log=(event:string,values:Record<string,unknown>={})=>console.log(JSON.stringify({event,timestamp:new Date().toISOString(),elapsedMs:Date.now()-started,attempt,...values}));
+const log=(event:string,values:Record<string,unknown>={})=> { if (/failed|retry/i.test(event) || event === 'science-cycle-complete') emitLogRecord({event,country:'GB',city:'London',component:'collector',operation:'science_monitor',runId,status:/failed|retry/i.test(event)?'failed':pending?'skipped':'complete',durationMs:Date.now()-started,diagnostics:values}); };
 async function stage<T>(name:string,operation:()=>Promise<T>):Promise<T>{const id=++requestId,start=Date.now();phase=name;log('science-phase-start',{phase:name,requestId:id});try{const value=await operation();log('science-phase-complete',{phase:name,requestId:id,phaseElapsedMs:Date.now()-start});return value;}catch(error){log('science-phase-failed',{phase:name,requestId:id,phaseElapsedMs:Date.now()-start,...errorDiagnostic(error)});throw error;}}
 let apiPagePromise:Promise<import('playwright-core').Page>|undefined;
 const timer=setTimeout(()=>{void browser?.close().catch(()=>{});},Math.max(0,deadline-Date.now()));
@@ -47,4 +47,4 @@ try{
  }
  if(!success)process.exitCode=1;
  completed=true;
-}catch(error){lastError={category:'collection',code:'EXECUTION_ERROR'};lastCycleFailed=true;log('science-monitor-failed',{phase,...errorDiagnostic(error)});process.exitCode=1;}finally{logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'science_monitor',runId,status:process.exitCode===1?'failed':pending||lastCycleFailed?'partial':'complete',durationMs:Date.now()-started,...(lastCycleFailed && lastError?{error:lastError}:{}),diagnostics:{...(completed?{originalEvent:'science-monitor-complete',reason:'deadline'}:{}),collections:success,attempts:attempt,pending}});clearTimeout(timer);await browser?.close().catch(()=>{});await rm('work/science-payload.json',{force:true});await rm('work/science-response.json',{force:true});}
+}catch(error){lastError={category:'collection',code:'EXECUTION_ERROR'};lastCycleFailed=true;log('science-monitor-failed',{phase,...errorDiagnostic(error)});process.exitCode=1;}finally{logSummary({event:'run_summary',country:'GB',city:'London',component:'collector',operation:'science_monitor',runId,status:process.exitCode===1?'failed':lastCycleFailed?'partial':pending?'skipped':'complete',durationMs:Date.now()-started,...(lastCycleFailed && lastError?{error:lastError}:{}),diagnostics:{...(completed?{originalEvent:'science-monitor-complete',reason:'deadline'}:{}),collections:success,attempts:attempt,pending}});clearTimeout(timer);await browser?.close().catch(()=>{});await rm('work/science-payload.json',{force:true});await rm('work/science-response.json',{force:true});}
